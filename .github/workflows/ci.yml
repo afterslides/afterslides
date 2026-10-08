@@ -101,8 +101,8 @@ jobs:
           uv run --no-sync maturin develop --release
       - run: uv run --no-sync pytest -m libreoffice -v
 
-  ooxml-validate:
-    name: Open XML SDK validation
+  corpus:
+    name: Real-world corpus + Open XML SDK validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -115,15 +115,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: astral-sh/setup-uv@v10.2.0
+      - uses: actions/cache@v6
+        with:
+          path: .corpus
+          key: corpus-${{ hashFiles('scripts/fetch_corpus.sh') }}
+      - run: scripts/fetch_corpus.sh
       - run: |
           uv venv --python 3.12
           uv pip install maturin pytest python-pptx openpyxl
           uv run --no-sync maturin develop --release
-      - name: Save every deck the tests produce
+      - name: Run all edits on all decks, keeping every result
         run: uv run --no-sync pytest -m "not slow and not libreoffice" -q
         env:
           AFTERSLIDES_DUMP_DIR: ${{ runner.temp }}/decks
-      - name: Validate them
-        run: |
-          cp tests/fixtures/*.pptx "${{ runner.temp }}/decks/"
-          dotnet run --project tools/ooxml-validate -c Release -- "${{ runner.temp }}/decks"
+      - name: Validate the results against their inputs
+        run: uv run --no-sync python scripts/validate_outputs.py "${{ runner.temp }}/decks"
