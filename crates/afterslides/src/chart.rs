@@ -347,18 +347,49 @@ fn range_ref(sheet: &str, col: usize, first_row: usize, len: usize) -> String {
     )
 }
 
-/// The sheet name used in the template's formulas, as written (possibly quoted).
+/// Sheet reference for the formulas we write (quoted if needed), based on
+/// the sheet the template's formulas use.
+///
+/// Templates sometimes refer to linked workbooks (`[1]Data`) or use names
+/// Excel would not accept; we write our own embedded workbook, so the name
+/// is cleaned up to something valid.
 fn sheet_ref(plot_area: &Element) -> String {
     let mut found = None;
     plot_area.walk(&mut |e| {
         if found.is_none()
             && e.is(ns::C, "f")
-            && let Some((sheet, _)) = e.text().rsplit_once('!')
+            && let Some((sheet, _)) = e.text().split_once('!')
         {
-            found = Some(sheet.to_string());
+            found = Some(sheet.trim_start_matches('(').to_string());
         }
     });
-    found.unwrap_or_else(|| "Sheet1".to_string())
+    let name = clean_sheet_name(&unquote_sheet(&found.unwrap_or_default()));
+    let plain = name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !name.starts_with(|c: char| c.is_ascii_digit());
+    if plain {
+        name
+    } else {
+        format!("'{}'", name.replace('\'', "''"))
+    }
+}
+
+fn clean_sheet_name(name: &str) -> String {
+    // Drop an external workbook prefix such as "[1]".
+    let name = match name.strip_prefix('[').and_then(|r| r.split_once(']')) {
+        Some((_, rest)) => rest,
+        None => name,
+    };
+    let cleaned: String = name
+        .chars()
+        .filter(|c| !matches!(c, '[' | ']' | ':' | '*' | '?' | '/' | '\\'))
+        .take(31)
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('\'').to_string();
+    if cleaned.is_empty() {
+        "Sheet1".to_string()
+    } else {
+        cleaned
+    }
 }
 
 fn unquote_sheet(sheet: &str) -> String {
@@ -918,6 +949,10 @@ mod tests {
         assert_eq!(cell_ref("Sheet1", 1, 0), "Sheet1!$B$1");
         assert_eq!(range_ref("'My data'", 2, 1, 3), "'My data'!$C$2:$C$4");
         assert_eq!(unquote_sheet("'It''s'"), "It's");
+        assert_eq!(clean_sheet_name("[0]Table 1"), "Table 1");
+        assert_eq!(clean_sheet_name("a/b:c"), "abc");
+        assert_eq!(clean_sheet_name(""), "Sheet1");
+        assert_eq!(clean_sheet_name(&"x".repeat(40)).len(), 31);
     }
 
     #[test]
