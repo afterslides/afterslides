@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import zipfile
 from pathlib import Path
+from typing import Callable, Union
 
 import pptx
 import pytest
@@ -73,3 +74,43 @@ def convert_with_libreoffice(pptx_path: Path, out_dir: Path, fmt: str = "pdf") -
     out = out_dir / f"{pptx_path.stem}.{fmt}"
     assert out.exists() and out.stat().st_size > 0, f"LibreOffice did not produce a {fmt}"
     return out
+
+
+Edit = Union[Callable[[str], str], str, bytes, None]
+
+
+def patched(edits: dict[str, Edit], renames: dict[str, str] | None = None) -> bytes:
+    """The template with some zip entries edited, added, renamed or removed.
+
+    A callable receives the entry's text and returns the new text; str/bytes
+    replace (or add) the entry; None removes it. Renames are applied first.
+    """
+    renames = renames or {}
+    out = io.BytesIO()
+    with zipfile.ZipFile(TEMPLATE) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        seen = set()
+        for info in src.infolist():
+            name = renames.get(info.filename, info.filename)
+            data = src.read(info.filename)
+            seen.add(name)
+            if name in edits:
+                edit = edits[name]
+                if edit is None:
+                    continue
+                if callable(edit):
+                    data = edit(data.decode("utf-8")).encode("utf-8")
+                else:
+                    data = edit.encode("utf-8") if isinstance(edit, str) else edit
+            dst.writestr(name, data)
+        for name, edit in edits.items():
+            if name not in seen and isinstance(edit, (str, bytes)):
+                dst.writestr(name, edit)
+    return out.getvalue()
+
+
+def replace_once(old: str, new: str) -> Callable[[str], str]:
+    def edit(text: str) -> str:
+        assert old in text, f"{old!r} not found"
+        return text.replace(old, new, 1)
+
+    return edit
