@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+import os
+import re
 import shutil
 import subprocess
 import zipfile
@@ -27,10 +29,25 @@ def prs() -> afterslides.Presentation:
     return afterslides.Presentation(TEMPLATE)
 
 
+_DUMP_DIR = os.environ.get("AFTERSLIDES_DUMP_DIR")
+_dump_counter = 0
+
+
 def saved(deck: afterslides.Presentation) -> bytes:
-    """Saves the deck and checks the structural invariants of the result."""
+    """Saves the deck and checks the structural invariants of the result.
+
+    With AFTERSLIDES_DUMP_DIR set, every saved deck is also written there so
+    CI can run external validators over all of them.
+    """
+    global _dump_counter
     data = deck.to_bytes()
     check_deck(data)
+    if _DUMP_DIR:
+        test = os.environ.get("PYTEST_CURRENT_TEST", "unknown").split(" ")[0]
+        _dump_counter += 1
+        name = re.sub(r"[^A-Za-z0-9_.-]+", "_", test)[-150:]
+        Path(_DUMP_DIR).mkdir(parents=True, exist_ok=True)
+        (Path(_DUMP_DIR) / f"{_dump_counter:04d}-{name}.pptx").write_bytes(data)
     return data
 
 

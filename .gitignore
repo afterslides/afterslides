@@ -12,3 +12,5 @@ __pycache__/
 # Office lock files
 ~$*
 .~lock.*#
+/tools/ooxml-validate/bin
+/tools/ooxml-validate/obj
