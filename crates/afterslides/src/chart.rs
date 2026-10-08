@@ -394,28 +394,39 @@ fn resize_series(plot_area: &mut Element, count: usize) -> Result<Vec<(usize, us
             "chart has no series to copy formatting from; add at least one in the template".into(),
         ));
     };
+    let plots_with_series: HashSet<usize> = locs.iter().map(|(p, _)| *p).collect();
+    if plots_with_series.len() > 1 && count != locs.len() {
+        return Err(Error::Unsupported(format!(
+            "this is a combo chart with {} series in {} plots; pass exactly {} series so \
+             each keeps its plot (adding or removing series in combo charts is not supported yet)",
+            locs.len(),
+            plots_with_series.len(),
+            locs.len()
+        )));
+    }
 
     if count > locs.len() {
+        // Filtered (hidden) series live in extension lists but still occupy
+        // their c:idx/c:order, so collect from every series element.
         let mut used_idx: Vec<u64> = Vec::new();
         let mut used_order: Vec<u64> = Vec::new();
         let mut used_guids: HashSet<String> = HashSet::new();
-        for (pi, si) in &locs {
-            let ser = child_el(child_el(plot_area, *pi), *si);
-            let num = |name| {
-                ser.child(ns::C, name)
-                    .and_then(|e| e.attr("val"))
-                    .and_then(|v| v.parse::<u64>().ok())
-            };
-            used_idx.extend(num("idx"));
-            used_order.extend(num("order"));
-            ser.walk(&mut |e| {
-                if e.local() == "uniqueId"
-                    && let Some(v) = e.attr("val")
-                {
-                    used_guids.insert(v.to_string());
-                }
-            });
-        }
+        plot_area.walk(&mut |e| {
+            if e.local() == "ser" {
+                let num = |name| {
+                    e.child(ns::C, name)
+                        .and_then(|c| c.attr("val"))
+                        .and_then(|v| v.parse::<u64>().ok())
+                };
+                used_idx.extend(num("idx"));
+                used_order.extend(num("order"));
+            }
+            if e.local() == "uniqueId"
+                && let Some(v) = e.attr("val")
+            {
+                used_guids.insert(v.to_string());
+            }
+        });
         let template = child_el(child_el(plot_area, last_plot), last_ser).clone();
         let plot = child_el_mut(plot_area, last_plot);
         for (insert_at, _) in (last_ser + 1..).zip(locs.len()..count) {
@@ -516,6 +527,15 @@ fn build_workbook(sheet: &str, columns: &[Column]) -> Result<Vec<u8>> {
     wb.save_to_buffer().map_err(wb_err)
 }
 
+fn check_finite(what: &str, values: impl IntoIterator<Item = Option<f64>>) -> Result<()> {
+    match values.into_iter().flatten().find(|v| !v.is_finite()) {
+        Some(bad) => Err(Error::InvalidArgument(format!(
+            "{what:?} contains {bad}; use None for missing values"
+        ))),
+        None => Ok(()),
+    }
+}
+
 fn number_cells(values: &[Option<f64>]) -> Vec<Option<Cell>> {
     values.iter().map(|v| v.map(Cell::Number)).collect()
 }
@@ -612,7 +632,11 @@ impl Presentation {
     /// document order across plots.
     pub fn set_chart_data(&mut self, shape: ShapeRef, data: &ChartData) -> Result<()> {
         let n = data.categories.len();
+        if let Categories::Numbers(v) = &data.categories {
+            check_finite("categories", v.iter().copied().map(Some))?;
+        }
         for s in &data.series {
+            check_finite(&s.name, s.values.iter().copied())?;
             if s.values.len() > n {
                 return Err(Error::InvalidArgument(format!(
                     "series {:?} has {} values but there are only {n} categories",
@@ -628,6 +652,8 @@ impl Presentation {
                 "this is a scatter or bubble chart; use set_chart_xy_data".into(),
             ));
         }
+        // Fail before touching the chart if the workbook can't be written.
+        build_workbook(&unquote_sheet(&sheet_ref(plot_area(doc)?)), &[])?;
 
         let doc = self.pkg.xml_mut(&part)?;
         let pa = plot_area_mut(doc)?;
@@ -701,7 +727,11 @@ impl Presentation {
             ));
         }
         let bubble = pa.elements().any(|e| e.is(ns::C, "bubbleChart"));
+        build_workbook(&unquote_sheet(&sheet_ref(pa)), &[])?;
         for s in series {
+            check_finite(&s.name, s.x.iter().copied())?;
+            check_finite(&s.name, s.y.iter().copied())?;
+            check_finite(&s.name, s.sizes.iter().flatten().copied())?;
             if s.x.len() != s.y.len() {
                 return Err(Error::InvalidArgument(format!(
                     "series {:?} has {} x values but {} y values",

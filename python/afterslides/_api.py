@@ -18,7 +18,7 @@ _EXCEL_EPOCH = _dt.datetime(1899, 12, 30)
 
 
 def _to_float(value: Any) -> float | None:
-    """Converts a cell value to float; ``None`` and NaN become gaps."""
+    """Converts a chart value to float; ``None`` and NaN become gaps."""
     if value is None:
         return None
     try:
