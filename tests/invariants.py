@@ -50,10 +50,10 @@ def check_deck(data: bytes) -> None:
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         names = [n for n in z.namelist() if not n.endswith("/")]
         parts = {"/" + n: z.read(n) for n in names}
-    lower = {name.lower(): name for name in parts}
+    lower = {unquote(name).lower(): name for name in parts}
 
     def exists(name: str) -> bool:
-        return name.lower() in lower
+        return unquote(name).lower() in lower
 
     # Content types: every part has one, every override has a part.
     ct = etree.fromstring(parts["/[Content_Types].xml"])

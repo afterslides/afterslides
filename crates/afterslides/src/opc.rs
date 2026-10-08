@@ -508,9 +508,12 @@ impl Package {
         if self.parts.contains_key(&name) {
             return name;
         }
+        // Zip entries may also be stored percent-encoded; compare decoded.
         self.parts
             .keys()
-            .find(|k| k.eq_ignore_ascii_case(&name))
+            .find(|k| {
+                k.eq_ignore_ascii_case(&name) || percent_decode(k).eq_ignore_ascii_case(&name)
+            })
             .cloned()
             .unwrap_or(name)
     }

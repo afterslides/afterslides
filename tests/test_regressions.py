@@ -24,11 +24,11 @@ def test_percent_encoded_media_target_survives_cleanup() -> None:
                 'Target="../media/image1.png"', 'Target="../media/image%201.png"'
             )
         },
-        renames={"ppt/media/image1.png": "ppt/media/image 1.png"},
+        renames={"ppt/media/image1.png": "ppt/media/image%201.png"},
     )
     prs = Presentation(data)
     prs.shape("Trend").delete()  # releases a chart, so unused parts get cleaned up
-    assert "ppt/media/image 1.png" in zip_entries(prs)
+    assert "ppt/media/image%201.png" in zip_entries(prs)
 
 
 def test_media_target_with_different_case_survives_cleanup() -> None:
