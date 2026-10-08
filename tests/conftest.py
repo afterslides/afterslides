@@ -43,8 +43,8 @@ def soffice() -> str | None:
     return shutil.which("soffice") or shutil.which("libreoffice")
 
 
-def convert_with_libreoffice(pptx_path: Path, out_dir: Path) -> Path:
-    """Converts a deck to PDF; a failure means LibreOffice could not read it."""
+def convert_with_libreoffice(pptx_path: Path, out_dir: Path, fmt: str = "pdf") -> Path:
+    """Converts a deck with LibreOffice; a failure means it could not read it."""
     binary = soffice()
     assert binary is not None
     subprocess.run(
@@ -53,7 +53,7 @@ def convert_with_libreoffice(pptx_path: Path, out_dir: Path) -> Path:
             f"-env:UserInstallation=file://{out_dir / 'profile'}",
             "--headless",
             "--convert-to",
-            "pdf",
+            fmt,
             "--outdir",
             str(out_dir),
             str(pptx_path),
@@ -62,6 +62,6 @@ def convert_with_libreoffice(pptx_path: Path, out_dir: Path) -> Path:
         capture_output=True,
         timeout=180,
     )
-    pdf = out_dir / (pptx_path.stem + ".pdf")
-    assert pdf.exists(), "LibreOffice did not produce a PDF"
-    return pdf
+    out = out_dir / f"{pptx_path.stem}.{fmt}"
+    assert out.exists() and out.stat().st_size > 0, f"LibreOffice did not produce a {fmt}"
+    return out

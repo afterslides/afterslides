@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pptx
 import pytest
 
 from afterslides import Presentation, Series, XySeries
@@ -28,14 +29,24 @@ def edit_everything(prs: Presentation) -> None:
     prs.slides[4].delete()
 
 
-def page_count(pdf: Path) -> int:
-    return pdf.read_bytes().count(b"/Type /Page") - pdf.read_bytes().count(b"/Type /Pages")
-
-
-def test_libreoffice_opens_edited_deck(tmp_path: Path) -> None:
+def test_libreoffice_renders_edited_deck(tmp_path: Path) -> None:
     prs = Presentation(TEMPLATE)
     edit_everything(prs)
     out = tmp_path / "edited.pptx"
     prs.save(out)
     pdf = convert_with_libreoffice(out, tmp_path)
-    assert page_count(pdf) == 7
+    assert pdf.read_bytes().startswith(b"%PDF")
+
+
+def test_libreoffice_reads_every_slide(tmp_path: Path) -> None:
+    prs = Presentation(TEMPLATE)
+    edit_everything(prs)
+    src = tmp_path / "src" / "edited.pptx"
+    src.parent.mkdir()
+    prs.save(src)
+    # LibreOffice re-saves the deck; python-pptx then counts what it understood.
+    resaved = convert_with_libreoffice(src, tmp_path, "pptx")
+    check = pptx.Presentation(str(resaved))
+    assert len(check.slides) == 7
+    texts = [s.text_frame.text for slide in check.slides for s in slide.shapes if s.has_text_frame]
+    assert "Report for Acme — Q3" in texts
