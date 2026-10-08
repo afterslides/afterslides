@@ -42,6 +42,7 @@ pub mod content_type {
     pub const NOTES_SLIDE: &str =
         "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml";
     pub const XLSX: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    pub const RELATIONSHIPS: &str = "application/vnd.openxmlformats-package.relationships+xml";
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -316,23 +317,13 @@ impl Package {
             .compression_method(CompressionMethod::Deflated)
             .compression_level(Some(6));
 
-        let mut written = HashSet::new();
-        // Content types first, as Office does.
-        zip.start_file(CONTENT_TYPES, options)?;
-        match &self.content_types_raw {
-            Some(raw) => zip.write_all(raw)?,
-            None => zip.write_all(&self.content_types.to_bytes())?,
-        }
-
         let mut names: Vec<String> = self.order.clone();
-        for name in self.parts.keys() {
-            names.push(name.clone());
-        }
-        for source in self.rels.keys() {
-            names.push(rels_name(source));
-        }
+        names.extend(self.parts.keys().cloned());
+        names.extend(self.rels.keys().map(|source| rels_name(source)));
+        let mut seen = HashSet::new();
+        let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
         for name in names {
-            if !written.insert(name.clone()) {
+            if !seen.insert(name.clone()) {
                 continue;
             }
             let bytes = if let Some(part) = self.parts.get(&name) {
@@ -346,10 +337,58 @@ impl Package {
                 // [Content_Types].xml or a part that was removed.
                 continue;
             };
+            entries.push((name, bytes));
+        }
+        self.reconcile_content_types(&entries);
+
+        // Content types first, as Office does.
+        zip.start_file(CONTENT_TYPES, options)?;
+        match &self.content_types_raw {
+            Some(raw) => zip.write_all(raw)?,
+            None => zip.write_all(&self.content_types.to_bytes())?,
+        }
+        for (name, bytes) in entries {
             zip.start_file(&name[1..], options)?;
             zip.write_all(&bytes)?;
         }
         Ok(zip.finish()?)
+    }
+
+    /// Makes `[Content_Types].xml` match the entries about to be written:
+    /// drops overrides for parts that are gone and gives new relationship
+    /// parts a content type (some producers list every `.rels` part as an
+    /// override instead of using a default). Untouched when nothing changed.
+    fn reconcile_content_types(&mut self, entries: &[(String, Vec<u8>)]) {
+        let present: HashSet<String> = entries
+            .iter()
+            .map(|(name, _)| percent_decode(name).to_ascii_lowercase())
+            .collect();
+        let stale: Vec<String> = self
+            .content_types
+            .root
+            .children_named(ns::CONTENT_TYPES, "Override")
+            .filter_map(|o| o.attr("PartName"))
+            .filter(|p| !present.contains(&percent_decode(p).to_ascii_lowercase()))
+            .map(str::to_string)
+            .collect();
+        for name in stale {
+            self.remove_override(&name);
+        }
+        let rels_untyped = entries
+            .iter()
+            .any(|(name, _)| name.ends_with(".rels") && self.content_type(name).is_none());
+        if rels_untyped {
+            let root = &mut self.content_types.root;
+            let mut default = Element::new_like(root, "Default");
+            default.set_attr("Extension", "rels");
+            default.set_attr("ContentType", content_type::RELATIONSHIPS);
+            // Defaults come before overrides.
+            let at = root
+                .position(ns::CONTENT_TYPES, "Override")
+                .unwrap_or(root.children.len());
+            root.children.insert(at, Node::Element(default));
+            self.content_types_raw = None;
+        }
     }
 
     pub fn to_bytes(&mut self) -> Result<Vec<u8>> {
