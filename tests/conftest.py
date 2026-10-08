@@ -33,21 +33,33 @@ _DUMP_DIR = os.environ.get("AFTERSLIDES_DUMP_DIR")
 _dump_counter = 0
 
 
-def saved(deck: afterslides.Presentation) -> bytes:
-    """Saves the deck and checks the structural invariants of the result.
+def dump(data: bytes, label: str | None = None, source: Path | None = None) -> None:
+    """With AFTERSLIDES_DUMP_DIR set, keeps a copy of a saved deck there so CI
+    can run external validators over everything the tests produce.
 
-    With AFTERSLIDES_DUMP_DIR set, every saved deck is also written there so
-    CI can run external validators over all of them.
+    `source` is the input deck; it goes into manifest.tsv so validation can
+    ignore problems the input already had.
     """
     global _dump_counter
+    if not _DUMP_DIR:
+        return
+    if label is None:
+        label = os.environ.get("PYTEST_CURRENT_TEST", "unknown").split(" ")[0]
+    _dump_counter += 1
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", label)[-150:]
+    out_dir = Path(_DUMP_DIR)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{os.getpid()}-{_dump_counter:04d}-{name}.pptx"
+    out.write_bytes(data)
+    with open(out_dir / "manifest.tsv", "a", encoding="utf-8") as manifest:
+        manifest.write(f"{out.name}\t{source.resolve() if source else TEMPLATE}\n")
+
+
+def saved(deck: afterslides.Presentation) -> bytes:
+    """Saves the deck and checks the structural invariants of the result."""
     data = deck.to_bytes()
     check_deck(data)
-    if _DUMP_DIR:
-        test = os.environ.get("PYTEST_CURRENT_TEST", "unknown").split(" ")[0]
-        _dump_counter += 1
-        name = re.sub(r"[^A-Za-z0-9_.-]+", "_", test)[-150:]
-        Path(_DUMP_DIR).mkdir(parents=True, exist_ok=True)
-        (Path(_DUMP_DIR) / f"{_dump_counter:04d}-{name}.pptx").write_bytes(data)
+    dump(data)
     return data
 
 

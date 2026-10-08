@@ -49,6 +49,7 @@ testpaths = ["tests"]
 markers = [
     "libreoffice: needs a LibreOffice installation (soffice on PATH)",
     "slow: long-running tests such as the memory soak test",
+    "corpus: runs against real-world decks fetched by scripts/fetch_corpus.sh",
 ]
 
 [tool.ruff]
