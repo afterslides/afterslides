@@ -20,12 +20,14 @@ prs.shape("Revenue Chart").chart.replace_data(
     {"2025": [1.2, 1.4, 1.1], "2026": [1.5, 1.7, 1.9]},
 )
 
-prs.shape("Top Customers").table.fill([
-    ["Globex", "1.2M", "31%"],
-    ["Initech", "0.9M", "24%"],
-])
+prs.shape("Top Customers").table.fill(
+    [
+        ["Globex", "1.2M", "31%"],
+        ["Initech", "0.9M", "24%"],
+    ]
+)
 
-risks = []                       # nothing to report this quarter
+risks = []  # nothing to report this quarter
 if not risks:
     prs.shape("Risk Matrix").slide.delete()
 
@@ -91,8 +93,8 @@ The alt text of a shape is a good place for extra markers
 ### Opening and saving
 
 ```python
-prs = Presentation("template.pptx")      # path, bytes or a binary stream
-prs.save("out.pptx")                     # path or writable binary stream
+prs = Presentation("template.pptx")  # path, bytes or a binary stream
+prs.save("out.pptx")  # path or writable binary stream
 data = prs.to_bytes()
 ```
 
@@ -110,7 +112,7 @@ slide = prs.slides[2]
 chart_shape = slide.shape("Revenue Chart")
 logo = prs.find_shapes(kind="picture")[0]
 
-copy = slide.duplicate()          # inserted right after the original
+copy = slide.duplicate()  # inserted right after the original
 copy.move_to(0)
 slide.delete()
 ```
@@ -123,11 +125,11 @@ shape is gone.
 
 ```python
 chart = prs.shape("Revenue Chart").chart
-chart.categories          # ['Q1', 'Q2', 'Q3', 'Q4']
-chart.series              # [Series(name='2025', values=[...]), ...]
+chart.categories  # ['Q1', 'Q2', 'Q3', 'Q4']
+chart.series  # [Series(name='2025', values=[...]), ...]
 
 chart.replace_data(["Q1", "Q2"], {"Plan": [10, 12], "Actual": [11, None]})
-chart.replace_data(df)    # pandas: index -> categories, columns -> series
+chart.replace_data(df)  # pandas: index -> categories, columns -> series
 chart.title = "Revenue 2026"
 
 scatter = prs.shape("Scatter").chart
@@ -141,8 +143,8 @@ scatter.replace_xy_data([XySeries("Run 1", x=[1, 2, 3], y=[2.0, 3.5, 3.1])])
 
 ```python
 table = prs.shape("Top Customers").table
-table.fill(rows)                 # starts below the header row; resizes
-table.fill(rows, start_row=0)    # no header
+table.fill(rows)  # starts below the header row; resizes
+table.fill(rows, start_row=0)  # no header
 table[0, 1] = "Revenue (EUR)"
 table.delete_column(-1)
 ```
