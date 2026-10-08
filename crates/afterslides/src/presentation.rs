@@ -57,11 +57,31 @@ impl Presentation {
                 "{main} is not a PresentationML document (is this a .docx or .xlsx?)"
             )));
         }
-        Ok(Presentation {
+        let mut prs = Presentation {
             pkg,
             main,
             needs_gc: false,
-        })
+        };
+        prs.make_shape_ids_unique()?;
+        Ok(prs)
+    }
+
+    /// Shapes are addressed by id, so ids must be unique per slide. Files
+    /// with duplicates exist (PowerPoint fixes them silently on save); only
+    /// such slides are rewritten.
+    fn make_shape_ids_unique(&mut self) -> Result<()> {
+        for slide in self.slides()? {
+            let part = self.slide_part(slide)?;
+            if !self.pkg.has_part(&part) {
+                continue;
+            }
+            let tree = crate::shape::sp_tree(&self.pkg.xml(&part)?.root)?;
+            if crate::shape::has_duplicate_ids(tree) {
+                let tree = crate::shape::sp_tree_mut(&mut self.pkg.xml_mut(&part)?.root)?;
+                crate::shape::dedupe_ids(tree);
+            }
+        }
+        Ok(())
     }
 
     pub fn save(&mut self, path: impl AsRef<Path>) -> Result<()> {

@@ -216,6 +216,90 @@ fn at_path_mut<'a>(root: &'a mut Element, path: &[usize]) -> &'a mut Element {
     })
 }
 
+fn c_nv_pr_mut(shape: &mut Element) -> Option<&mut Element> {
+    shape
+        .elements_mut()
+        .find(|e| e.ns() == Some(ns::P) && e.local().starts_with("nv"))
+        .and_then(|nv| nv.child_mut(ns::P, "cNvPr"))
+}
+
+/// Ids of all shapes PowerPoint shows (fallback copies excluded), plus the
+/// id of the shape tree itself.
+fn visible_ids(sp_tree: &Element) -> Vec<u32> {
+    let mut ids: Vec<u32> = shape_id(sp_tree).into_iter().collect();
+    visit(sp_tree, None, &mut |el, _| ids.extend(shape_id(el)));
+    ids
+}
+
+pub(crate) fn has_duplicate_ids(sp_tree: &Element) -> bool {
+    let ids = visible_ids(sp_tree);
+    let unique: HashSet<u32> = ids.iter().copied().collect();
+    unique.len() != ids.len()
+}
+
+/// Gives every shape after the first one with a given id a fresh id, like
+/// PowerPoint does when it saves such a file. The copy of a shape in
+/// `mc:Fallback` follows its `mc:Choice` twin.
+pub(crate) fn dedupe_ids(sp_tree: &mut Element) {
+    let mut next = visible_ids(sp_tree).into_iter().max().unwrap_or(1);
+    let mut seen: HashSet<u32> = shape_id(sp_tree).into_iter().collect();
+
+    fn walk(container: &mut Element, seen: &mut HashSet<u32>, next: &mut u32) {
+        for child in container.elements_mut() {
+            if is_shape_element(child) {
+                if let Some(id) = shape_id(child)
+                    && !seen.insert(id)
+                {
+                    *next += 1;
+                    seen.insert(*next);
+                    if let Some(c) = c_nv_pr_mut(child) {
+                        c.set_attr("id", next.to_string());
+                    }
+                }
+                if child.local() == "grpSp" {
+                    walk(child, seen, next);
+                }
+            } else if child.is(ns::MC, "AlternateContent") {
+                // Renumber the first branch, then apply the same mapping to
+                // the others so twins keep matching ids.
+                let mut branches = child
+                    .elements_mut()
+                    .filter(|e| e.is(ns::MC, "Choice") || e.is(ns::MC, "Fallback"));
+                let Some(first) = branches.next() else {
+                    continue;
+                };
+                let before = branch_ids(first);
+                walk(first, seen, next);
+                let after = branch_ids(first);
+                let map: Vec<(u32, u32)> = before.into_iter().zip(after).collect();
+                for other in branches {
+                    other.walk_mut(&mut |e| {
+                        if is_shape_element(e)
+                            && let Some(id) = shape_id(e)
+                            && let Some((_, new)) = map.iter().find(|(old, _)| *old == id)
+                            && let Some(c) = c_nv_pr_mut(e)
+                        {
+                            c.set_attr("id", new.to_string());
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    fn branch_ids(branch: &Element) -> Vec<u32> {
+        let mut ids = Vec::new();
+        branch.walk(&mut |e| {
+            if is_shape_element(e) {
+                ids.extend(shape_id(e));
+            }
+        });
+        ids
+    }
+
+    walk(sp_tree, &mut seen, &mut next);
+}
+
 pub(crate) fn sp_tree(slide_root: &Element) -> Result<&Element> {
     slide_root
         .path(&[(ns::P, "cSld"), (ns::P, "spTree")])
@@ -404,5 +488,42 @@ impl Presentation {
             self.needs_gc = true;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::xml::Document;
+
+    #[test]
+    fn dedupe_keeps_alternate_content_twins_in_sync() {
+        let xml = r#"<p:spTree xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+            <p:nvGrpSpPr><p:cNvPr id="1" name=""/></p:nvGrpSpPr>
+            <p:sp><p:nvSpPr><p:cNvPr id="2" name="a"/></p:nvSpPr></p:sp>
+            <mc:AlternateContent>
+              <mc:Choice Requires="p14"><p:sp><p:nvSpPr><p:cNvPr id="2" name="b"/></p:nvSpPr></p:sp></mc:Choice>
+              <mc:Fallback><p:sp><p:nvSpPr><p:cNvPr id="2" name="b"/></p:nvSpPr></p:sp></mc:Fallback>
+            </mc:AlternateContent>
+            <p:grpSp><p:nvGrpSpPr><p:cNvPr id="3" name="g"/></p:nvGrpSpPr>
+              <p:sp><p:nvSpPr><p:cNvPr id="2" name="c"/></p:nvSpPr></p:sp>
+            </p:grpSp>
+        </p:spTree>"#;
+        let mut doc = Document::parse(xml.as_bytes()).unwrap();
+        assert!(has_duplicate_ids(&doc.root));
+        dedupe_ids(&mut doc.root);
+        assert!(!has_duplicate_ids(&doc.root));
+        let mut names = Vec::new();
+        doc.root.walk(&mut |e| {
+            if is_shape_element(e) {
+                let c = c_nv_pr(e).unwrap();
+                names.push(format!(
+                    "{}={}",
+                    c.attr("name").unwrap(),
+                    c.attr("id").unwrap()
+                ));
+            }
+        });
+        assert_eq!(names, ["a=2", "b=4", "b=4", "g=3", "c=5"]);
     }
 }
