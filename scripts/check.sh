@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Runs the same checks as CI. Use before pushing:  scripts/check.sh [--quick]
+# --quick skips the slow, LibreOffice and corpus tests.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -14,7 +15,7 @@ step "ruff";         uvx ruff@0.16.10 check && uvx ruff@0.16.10 format --check
 step "mypy";         uvx mypy --strict python/afterslides --ignore-missing-imports
 step "build";        uv run --no-sync maturin develop --quiet
 if [[ "${1:-}" == "--quick" ]]; then
-  step "pytest (quick)"; uv run --no-sync pytest -q -m "not slow and not libreoffice"
+  step "pytest (quick)"; uv run --no-sync pytest -q -m "not slow and not libreoffice and not corpus"
 else
   step "pytest";         uv run --no-sync pytest -q
 fi

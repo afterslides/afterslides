@@ -121,6 +121,14 @@ Windows plus an MSRV check (Rust 1.88). Keep it green; don't merge red.
   `p:sp` is `nvSpPr, spPr, style, txBody, extLst`; `extLst` is always last.
 - **Vertical merges** (`rowSpan`/`vMerge`) must be adjusted when rows are
   inserted or deleted; `invariants.py` checks spans stay inside the table.
+- **Fragment targets**: `Target="#_ftn1"` points into the source part itself;
+  strip `#...` before resolving.
+- **Content types per `.rels` part**: LibreOffice lists each rels part as an
+  override. `Package::write` reconciles content types with what is written.
+- **Deleting shapes** must also remove their animations (`p:timing`,
+  `p:bldLst`, `p:spTgt/@spid`) and detach connectors (`a:stCxn`/`a:endCxn`).
+- **Sheet names from chart formulas** can contain external workbook
+  prefixes (`[1]Data`); clean them before building the embedded workbook.
 - python-pptx writes `'` quotes in the XML declaration; our writer uses `"`.
   That's fine, but don't compare XML of modified parts byte-wise in tests.
 
@@ -136,6 +144,10 @@ Windows plus an MSRV check (Rust 1.88). Keep it green; don't merge red.
 - CI validates every saved deck with the Open XML SDK
   (`tools/ooxml-validate`, needs dotnet; `scripts/check.sh` runs it when
   dotnet is installed).
+- `scripts/fetch_corpus.sh` downloads ~150 real-world decks into `.corpus/`;
+  `tests/test_corpus.py` (marker `corpus`) runs every edit on all of them
+  and compares the result with its input. Run it after any change to the
+  core; it finds what synthetic fixtures don't. See `docs/testing.md`.
 - `tests/test_regressions.py` patches the fixture with constructs from real
   templates (`patched()`/`replace_once()` in `conftest.py`); prefer that over
   growing the generated fixture for one-off cases.

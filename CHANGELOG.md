@@ -39,3 +39,10 @@ contain breaking changes.
   left merges pointing past the table.
 - Concurrent saves to the same path could interfere through a shared temp
   file.
+- Deleting an animated shape left animations pointing at it; connectors
+  glued to it kept dangling references.
+- Decks from LibreOffice got relationship parts without content type when
+  slides were added, and kept content types of deleted parts.
+- Charts whose formulas refer to linked workbooks could not be filled.
+- Hyperlinks to bookmarks (`#name` targets) were treated as part names.
+- Zip entries with a bad checksum raised `OSError` instead of `PackageError`.
