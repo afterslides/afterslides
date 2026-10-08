@@ -66,6 +66,62 @@ fn ext_ids(tbl: &Element, local: &str) -> Vec<u64> {
     out
 }
 
+/// Indices into `children` of the child elements named `local`.
+fn positions(el: &Element, local: &str) -> Vec<usize> {
+    el.children
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| matches!(n, Node::Element(e) if e.is(ns::A, local)))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+fn cell(tbl: &Element, row: usize, col: usize) -> Option<&Element> {
+    tbl.children_named(ns::A, "tr")
+        .nth(row)?
+        .children_named(ns::A, "tc")
+        .nth(col)
+}
+
+fn cell_mut(tbl: &mut Element, row: usize, col: usize) -> Option<&mut Element> {
+    tbl.children_named_mut(ns::A, "tr")
+        .nth(row)?
+        .children_named_mut(ns::A, "tc")
+        .nth(col)
+}
+
+/// `rowSpan` of every cell (1 when not set), row by row.
+fn row_spans(tbl: &Element) -> Vec<Vec<usize>> {
+    tbl.children_named(ns::A, "tr")
+        .map(|tr| {
+            tr.children_named(ns::A, "tc")
+                .map(|tc| {
+                    tc.attr("rowSpan")
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(1)
+                        .max(1)
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The row of the merge head in column `col` whose span reaches past `row`
+/// from above (so `row` lies strictly inside the merge or is its last row).
+fn covering_head(spans: &[Vec<usize>], row: usize, col: usize) -> Option<usize> {
+    (0..row)
+        .rev()
+        .find(|&h| spans[h].get(col).is_some_and(|&s| s > 1 && h + s > row))
+}
+
+fn set_row_span(tc: &mut Element, span: usize) {
+    if span > 1 {
+        tc.set_attr("rowSpan", span.to_string());
+    } else {
+        tc.remove_attr("rowSpan");
+    }
+}
+
 /// Keeps the graphic frame's height in line with its rows so PowerPoint
 /// doesn't draw stale selection handles.
 fn sync_frame_height(frame: &mut Element) {
@@ -93,8 +149,9 @@ fn sync_frame_width(frame: &mut Element) {
 }
 
 impl Presentation {
-    /// Cell texts, row by row. Merged-away cells are reported as empty strings
-    /// so every row has the same length.
+    /// Cell texts, row by row, one entry per grid column. Cells hidden by a
+    /// merge report their own (normally empty) text, so every row has the
+    /// same length and `[row][col]` matches the grid.
     pub fn table_values(&self, shape: ShapeRef) -> Result<Vec<Vec<String>>> {
         let el = self.shape_element(shape)?;
         let tbl = tbl(el).ok_or_else(|| not_a_table(shape, el))?;
@@ -148,39 +205,38 @@ impl Presentation {
     }
 
     /// Inserts a copy of row `source` at position `at` (`at == rows` appends).
-    /// The copy keeps all formatting; its text is cleared.
+    /// The copy keeps all formatting; its text is cleared. A row inserted
+    /// inside a vertically merged cell extends that merge.
     pub fn insert_table_row(&mut self, shape: ShapeRef, source: usize, at: usize) -> Result<()> {
         self.with_shape_mut(shape, |el| {
             let err = not_a_table(shape, el);
             let tbl = tbl_mut(el).ok_or(err)?;
-            let row_positions: Vec<usize> = tbl
-                .children
-                .iter()
-                .enumerate()
-                .filter(|(_, n)| matches!(n, Node::Element(e) if e.is(ns::A, "tr")))
-                .map(|(i, _)| i)
-                .collect();
-            let (&src_pos, n) = (
-                row_positions.get(source).ok_or_else(|| {
-                    Error::InvalidArgument(format!("row {source} is outside the table"))
-                })?,
-                row_positions.len(),
-            );
+            let row_positions = positions(tbl, "tr");
+            let n = row_positions.len();
+            let &src_pos = row_positions.get(source).ok_or_else(|| {
+                Error::InvalidArgument(format!("row {source} is outside the table"))
+            })?;
             if at > n {
                 return Err(Error::InvalidArgument(format!(
                     "cannot insert at row {at} of a table with {n} rows"
                 )));
             }
+            let spans = row_spans(tbl);
             let mut used = ext_ids(tbl, "rowId");
             let Node::Element(mut copy) = tbl.children[src_pos].clone() else {
                 unreachable!()
             };
-            for tc in copy.children_named_mut(ns::A, "tc") {
-                // A copied row must not continue a vertical merge from above
-                // or start one into the row below.
+            for (c, tc) in copy.children_named_mut(ns::A, "tc").enumerate() {
                 tc.remove_attr("rowSpan");
                 tc.remove_attr("vMerge");
                 set_cell_text(tc, "");
+                if let Some(head) = covering_head(&spans, at, c) {
+                    tc.set_attr("vMerge", "1");
+                    let span = spans[head][c];
+                    if let Some(h) = cell_mut(tbl, head, c) {
+                        h.set_attr("rowSpan", (span + 1).to_string());
+                    }
+                }
             }
             refresh_ext_id(&mut copy, "rowId", &mut used);
             let insert_pos = if at == n {
@@ -194,18 +250,45 @@ impl Presentation {
         })
     }
 
+    /// Deletes a row. Vertical merges that cross it get one row shorter; a
+    /// merge that starts in it moves its content to the next row.
     pub fn delete_table_row(&mut self, shape: ShapeRef, row: usize) -> Result<()> {
         self.with_shape_mut(shape, |el| {
             let err = not_a_table(shape, el);
             let tbl = tbl_mut(el).ok_or(err)?;
-            let pos = tbl
-                .children
-                .iter()
-                .enumerate()
-                .filter(|(_, n)| matches!(n, Node::Element(e) if e.is(ns::A, "tr")))
-                .map(|(i, _)| i)
-                .nth(row)
+            let row_positions = positions(tbl, "tr");
+            let &pos = row_positions
+                .get(row)
                 .ok_or_else(|| Error::InvalidArgument(format!("row {row} is outside the table")))?;
+            let spans = row_spans(tbl);
+            let cols = spans.get(row).map_or(0, Vec::len);
+            for c in 0..cols {
+                let span = spans[row][c];
+                if span > 1 {
+                    // The merge starts here: the next row's cell becomes its head.
+                    let Some(head) = cell(tbl, row, c).cloned() else {
+                        continue;
+                    };
+                    let grid_span = head
+                        .attr("gridSpan")
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(1);
+                    if let Some(next) = cell_mut(tbl, row + 1, c) {
+                        *next = head;
+                        set_row_span(next, span - 1);
+                    }
+                    for k in 1..grid_span {
+                        if let Some(next) = cell_mut(tbl, row + 1, c + k) {
+                            next.remove_attr("vMerge");
+                        }
+                    }
+                } else if let Some(head) = covering_head(&spans, row, c) {
+                    let span = spans[head][c];
+                    if let Some(h) = cell_mut(tbl, head, c) {
+                        set_row_span(h, span - 1);
+                    }
+                }
+            }
             tbl.children.remove(pos);
             sync_frame_height(el);
             Ok(())
