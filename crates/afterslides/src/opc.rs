@@ -269,7 +269,12 @@ impl Package {
             }
             let entry = file.name().to_string();
             let mut data = Vec::with_capacity(file.size().min(MAX_PART_SIZE) as usize);
-            (&mut file).take(MAX_PART_SIZE + 1).read_to_end(&mut data)?;
+            // A corrupt entry (bad CRC, truncated stream) is a broken file,
+            // not an I/O problem of the caller.
+            (&mut file)
+                .take(MAX_PART_SIZE + 1)
+                .read_to_end(&mut data)
+                .map_err(|e| Error::Zip(format!("{entry}: {e}")))?;
             if data.len() as u64 > MAX_PART_SIZE {
                 return Err(Error::Package(format!(
                     "{entry} is larger than {MAX_PART_SIZE} bytes"
@@ -580,6 +585,11 @@ fn rels_name(source: &str) -> String {
 /// Resolves a relationship target (a relative URI, possibly percent-encoded)
 /// against its source part.
 pub fn resolve_target(source: &str, target: &str) -> String {
+    // "#bookmark" points into the source itself; "slide2.xml#x" at a part.
+    let target = target.split_once('#').map_or(target, |(path, _)| path);
+    if target.is_empty() {
+        return source.to_string();
+    }
     let target = percent_decode(target);
     if target.starts_with('/') {
         return normalize(&target);
@@ -703,5 +713,13 @@ mod tests {
             "../media/image%201%C3%BC.png"
         );
         assert_eq!(percent_decode("100%"), "100%");
+        assert_eq!(
+            resolve_target("/ppt/slides/slide1.xml", "#_ftn1"),
+            "/ppt/slides/slide1.xml"
+        );
+        assert_eq!(
+            resolve_target("/ppt/slides/slide1.xml", "slide2.xml#x"),
+            "/ppt/slides/slide2.xml"
+        );
     }
 }

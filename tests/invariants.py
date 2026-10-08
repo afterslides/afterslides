@@ -87,8 +87,9 @@ def check_deck(data: bytes) -> None:
                 problems.append(f"{name}: duplicate relationship id {rid}")
             external = rel.get("TargetMode") == "External"
             entries[rid] = (rel.get("Type"), rel.get("Target"), external)
-            if not external:
-                target = _resolve(source if source != "/" else "/x", rel.get("Target"))
+            path = rel.get("Target").split("#", 1)[0]
+            if not external and path:
+                target = _resolve(source if source != "/" else "/x", path)
                 if not exists(target):
                     problems.append(f"{name}: {rid} points at missing {target}")
         rels[source] = entries
