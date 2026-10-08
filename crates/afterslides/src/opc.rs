@@ -498,7 +498,21 @@ impl Package {
                 "relationship {id} of {source} points outside the package"
             )));
         }
-        Ok(resolve_target(source, &rel.target))
+        Ok(self.canonical(resolve_target(source, &rel.target)))
+    }
+
+    /// The stored name of a part. OPC part names are case-insensitive, and
+    /// some producers write relationship targets in a different case than
+    /// the zip entry.
+    fn canonical(&self, name: String) -> String {
+        if self.parts.contains_key(&name) {
+            return name;
+        }
+        self.parts
+            .keys()
+            .find(|k| k.eq_ignore_ascii_case(&name))
+            .cloned()
+            .unwrap_or(name)
     }
 
     /// Internal targets of all relationships of `source`, with their types.
@@ -508,7 +522,7 @@ impl Package {
             .into_iter()
             .flat_map(|r| r.iter())
             .filter(|r| !r.external)
-            .map(|r| (r.clone(), resolve_target(source, &r.target)))
+            .map(|r| (r.clone(), self.canonical(resolve_target(source, &r.target))))
             .collect()
     }
 
@@ -560,13 +574,51 @@ fn rels_name(source: &str) -> String {
     format!("{dir}/_rels/{file}.rels")
 }
 
-/// Resolves a relationship target relative to its source part.
+/// Resolves a relationship target (a relative URI, possibly percent-encoded)
+/// against its source part.
 pub fn resolve_target(source: &str, target: &str) -> String {
+    let target = percent_decode(target);
     if target.starts_with('/') {
-        return normalize(target);
+        return normalize(&target);
     }
     let base = source.rsplit_once('/').map_or("", |(dir, _)| dir);
     normalize(&format!("{base}/{target}"))
+}
+
+fn percent_decode(s: &str) -> String {
+    if !s.contains('%') {
+        return s.to_string();
+    }
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |b: u8| (b as char).to_digit(16);
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(h), Some(l)) = (hex(bytes[i + 1]), hex(bytes[i + 2]))
+        {
+            out.push((h * 16 + l) as u8);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Encodes a part name for use as a relationship target.
+fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-._~/!$&'()*+,;=:@".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 fn normalize(path: &str) -> String {
@@ -595,7 +647,7 @@ pub fn relative_target(source: &str, target: &str) -> String {
     let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
     let mut parts: Vec<&str> = vec![".."; from.len() - common];
     parts.extend(&to[common..]);
-    parts.join("/")
+    percent_encode(&parts.join("/"))
 }
 
 #[cfg(test)]
@@ -639,5 +691,14 @@ mod tests {
             relative_target("/ppt/presentation.xml", "/ppt/slides/slide2.xml"),
             "slides/slide2.xml"
         );
+        assert_eq!(
+            resolve_target("/ppt/slides/slide1.xml", "../media/image%201%C3%BC.png"),
+            "/ppt/media/image 1ü.png"
+        );
+        assert_eq!(
+            relative_target("/ppt/slides/slide1.xml", "/ppt/media/image 1ü.png"),
+            "../media/image%201%C3%BC.png"
+        );
+        assert_eq!(percent_decode("100%"), "100%");
     }
 }
