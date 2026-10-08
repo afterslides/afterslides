@@ -199,8 +199,11 @@ impl Presentation {
         let doc = self.pkg.xml(&src)?.clone();
         self.pkg.add_xml_part(&new_part, &ct, doc);
 
+        let mut dropped = Vec::new();
         for (rel, target) in self.pkg.targets(&src) {
+            // Comments belong to the original slide.
             if COMMENTS_REL.contains(&rel.rel_type.as_str()) {
+                dropped.push(rel.id);
                 continue;
             }
             let new_target = match rel.rel_type.as_str() {
@@ -243,6 +246,10 @@ impl Presentation {
         for rel in external {
             self.pkg.rels_mut(&new_part).push(rel);
         }
+
+        let root = &mut self.pkg.xml_mut(&new_part)?.root;
+        strip_references(root, &dropped);
+        renew_creation_id(root);
 
         let main = self.main.clone();
         let rid = self
@@ -366,6 +373,33 @@ impl Presentation {
         }
         Ok(copy)
     }
+}
+
+/// Removes elements that refer to the given relationship ids (such as
+/// `p188:commentRel`), and extension containers left empty by that.
+fn strip_references(root: &mut Element, ids: &[String]) {
+    if ids.is_empty() {
+        return;
+    }
+    root.remove_descendants(&|e| {
+        e.attrs
+            .iter()
+            .any(|a| a.ns.as_deref() == Some(ns::R) && ids.contains(&a.value))
+    });
+    root.remove_descendants(&|e| e.is(ns::P, "ext") && e.elements().next().is_none());
+    root.remove_descendants(&|e| e.is(ns::P, "extLst") && e.elements().next().is_none());
+}
+
+/// Gives a copied slide its own `p14:creationId`; PowerPoint uses it to tell
+/// slides apart when merging and comparing decks.
+fn renew_creation_id(root: &mut Element) {
+    use std::hash::BuildHasher;
+    let fresh = std::collections::hash_map::RandomState::new().hash_one(root.text().len()) as u32;
+    root.walk_mut(&mut |e| {
+        if e.is(ns::P14, "creationId") {
+            e.set_attr("val", fresh.max(1).to_string());
+        }
+    });
 }
 
 /// `/ppt/charts/chart12.xml` -> (`/ppt/charts/chart`, `.xml`).
