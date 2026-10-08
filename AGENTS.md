@@ -37,6 +37,8 @@ docs/                    Architecture and migration notes.
 ## Commands
 
 ```sh
+scripts/check.sh [--quick]                    # everything CI runs; use before every push
+
 uv venv && uv pip install maturin pytest python-pptx openpyxl ruff mypy
 export PYO3_PYTHON=$PWD/.venv/bin/python     # needed for cargo on the -py crate
 

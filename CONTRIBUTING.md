@@ -28,15 +28,10 @@ uv run --no-sync pytest -m "not slow"  # quick test run
 cargo test -p afterslides              # Rust tests
 ```
 
-Before sending a pull request:
+Before sending a pull request, run everything CI runs:
 
 ```sh
-cargo fmt --all
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test -p afterslides
-uv run --no-sync pytest
-uvx ruff check && uvx ruff format --check
-uvx mypy --strict python/afterslides --ignore-missing-imports
+scripts/check.sh          # add --quick to skip the slow and LibreOffice tests
 ```
 
 CI runs the same checks on Linux, macOS and Windows.
