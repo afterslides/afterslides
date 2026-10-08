@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
       - run: uvx ruff@0.16.10 check
       - run: uvx ruff@0.16.10 format --check
       - run: uvx mypy --strict python/afterslides --ignore-missing-imports
@@ -73,7 +73,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
       - name: Build and install
         shell: bash
         run: |
@@ -93,7 +93,7 @@ jobs:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-impress
       - run: |
           uv venv --python 3.12
