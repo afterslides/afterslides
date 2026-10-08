@@ -1,0 +1,66 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "afterslides"
+description = "Fill PowerPoint templates with data: text, tables and native charts. A fast, open source alternative to commercial PPTX libraries for report generation."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "LGPL-3.0-or-later"
+license-files = ["COPYING", "COPYING.LESSER"]
+authors = [{ name = "Andreas Kluth", email = "mail@andreaskluth.net" }]
+keywords = ["pptx", "powerpoint", "template", "chart", "report"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Rust",
+    "Topic :: Office/Business :: Office Suites",
+    "Topic :: Multimedia :: Graphics :: Presentation",
+    "Typing :: Typed",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/afterslides/afterslides"
+Issues = "https://github.com/afterslides/afterslides/issues"
+Changelog = "https://github.com/afterslides/afterslides/blob/main/CHANGELOG.md"
+
+[tool.maturin]
+manifest-path = "crates/afterslides-py/Cargo.toml"
+python-source = "python"
+module-name = "afterslides._native"
+features = ["pyo3/extension-module"]
+
+[dependency-groups]
+dev = [
+    "maturin>=1.9,<2",
+    "pytest>=8",
+    "python-pptx>=1.0.2",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "libreoffice: needs a LibreOffice installation (soffice on PATH)",
+    "slow: long-running tests such as the memory soak test",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["afterslides", "conftest"]
+
+[tool.mypy]
+strict = true
+files = ["python/afterslides"]
