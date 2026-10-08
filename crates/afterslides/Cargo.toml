@@ -1,0 +1,22 @@
+[package]
+name = "afterslides"
+description = "Fill PowerPoint (.pptx) templates with data: text, tables and native charts."
+keywords = ["pptx", "powerpoint", "ooxml", "template", "chart"]
+categories = ["parser-implementations", "encoding"]
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[dependencies]
+quick-xml.workspace = true
+rust_xlsxwriter.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+
+[lints]
+workspace = true

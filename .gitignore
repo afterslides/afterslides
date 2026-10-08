@@ -1,0 +1,14 @@
+/target
+/.venv
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+/dist
+/.pytest_cache
+/.mypy_cache
+/.ruff_cache
+*.afterslides-tmp
+# Office lock files
+~$*
+.~lock.*#
