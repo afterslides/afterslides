@@ -1,3 +1,4 @@
+pub mod chart;
 pub mod error;
 pub mod opc;
 pub mod presentation;
