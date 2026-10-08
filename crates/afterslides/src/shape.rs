@@ -421,7 +421,9 @@ impl Presentation {
                         children: Vec::new(),
                     });
                 let body = text::new_body(el, "txBody", &a_like);
-                el.children.push(Node::Element(body));
+                // Schema order: nvSpPr, spPr, style, txBody, extLst.
+                let at = el.position(ns::P, "extLst").unwrap_or(el.children.len());
+                el.children.insert(at, Node::Element(body));
             }
             text::set_text(el.child_mut(ns::P, "txBody").expect("just ensured"), value);
             Ok(())
