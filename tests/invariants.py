@@ -44,8 +44,26 @@ def _resolve(source: str, target: str) -> str:
     return posixpath.normpath(posixpath.join(posixpath.dirname(source), target))
 
 
-def check_deck(data: bytes) -> None:
-    """Raises InvariantError listing every violation found."""
+def check_deck(data: bytes, baseline: bytes | None = None) -> None:
+    """Raises InvariantError listing every violation found.
+
+    With a baseline (the deck before editing), only kinds of problems the
+    input didn't already have are reported: real-world files come with
+    their own defects, and we only answer for the ones we introduce.
+    """
+    found = problems(data)
+    if baseline is not None:
+        known = {_kind(p) for p in problems(baseline)}
+        found = [p for p in found if _kind(p) not in known]
+    if found:
+        raise InvariantError("deck violates invariants:\n  " + "\n  ".join(found))
+
+
+def _kind(problem: str) -> str:
+    return re.sub(r"\d+", "#", problem)
+
+
+def problems(data: bytes) -> list[str]:
     problems: list[str] = []
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         names = [n for n in z.namelist() if not n.endswith("/")]
@@ -116,8 +134,7 @@ def check_deck(data: bytes) -> None:
         if name == "/ppt/presentation.xml":
             problems += _check_presentation(root)
 
-    if problems:
-        raise InvariantError("deck violates invariants:\n  " + "\n  ".join(problems))
+    return problems
 
 
 def _check_slide(name: str, root: etree._Element) -> list[str]:
@@ -131,6 +148,13 @@ def _check_slide(name: str, root: etree._Element) -> list[str]:
     dupes = [i for i, n in ids.items() if n > 1]
     if dupes:
         problems.append(f"{name}: duplicate shape ids {dupes}")
+    existing = {el.get("id") for el in root.iter(f"{{{P}}}cNvPr")}
+    for el in root.iter(f"{{{P}}}spTgt", f"{{{P}}}bldP", f"{{{P}}}bldGraphic", f"{{{P}}}bldDgm"):
+        if el.get("spid") not in existing:
+            problems.append(f"{name}: animation targets missing shape {el.get('spid')}")
+    for el in root.iter(f"{{{A}}}stCxn", f"{{{A}}}endCxn"):
+        if el.get("id") not in existing:
+            problems.append(f"{name}: connector glued to missing shape {el.get('id')}")
     for sp in root.iter(f"{{{P}}}sp"):
         order = [etree.QName(c).localname for c in sp if etree.QName(c).namespace == P]
         ranks = [SP_ORDER.index(t) for t in order if t in SP_ORDER]

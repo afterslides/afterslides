@@ -300,6 +300,71 @@ pub(crate) fn dedupe_ids(sp_tree: &mut Element) {
     walk(sp_tree, &mut seen, &mut next);
 }
 
+/// Removes what still points at deleted shapes: animations and build steps
+/// in `p:timing`, and connector ends glued to them. PowerPoint repairs a
+/// file whose animations target a shape that no longer exists.
+fn drop_shape_references(slide_root: &mut Element, ids: &HashSet<String>) {
+    let targets_deleted = |e: &Element| {
+        let mut hit = false;
+        e.walk(&mut |x| {
+            hit |= x.is(ns::P, "spTgt") && x.attr("spid").is_some_and(|id| ids.contains(id));
+        });
+        hit
+    };
+
+    // Connectors keep their geometry but are no longer attached.
+    slide_root.remove_descendants(&|e| {
+        (e.is(ns::A, "stCxn") || e.is(ns::A, "endCxn"))
+            && e.attr("id").is_some_and(|id| ids.contains(id))
+    });
+
+    let Some(timing) = slide_root.child_mut(ns::P, "timing") else {
+        return;
+    };
+    if let Some(builds) = timing.child_mut(ns::P, "bldLst") {
+        builds.remove_descendants(&|e| e.attr("spid").is_some_and(|id| ids.contains(id)));
+    }
+    if timing
+        .child(ns::P, "bldLst")
+        .is_some_and(|b| b.elements().next().is_none())
+    {
+        timing.remove_children(ns::P, "bldLst");
+    }
+
+    // An effect is a p:par whose time node has a preset class (entrance,
+    // emphasis, exit, path).
+    let is_effect = |e: &Element| {
+        e.is(ns::P, "par")
+            && e.child(ns::P, "cTn")
+                .is_some_and(|c| c.attr("presetClass").is_some())
+    };
+    let removed = timing.remove_descendants(&|e| is_effect(e) && targets_deleted(e));
+
+    // Click groups that lost all their effects go too, innermost first.
+    let empty_group = |e: &Element| {
+        e.is(ns::P, "par")
+            && e.path(&[(ns::P, "cTn"), (ns::P, "childTnLst")])
+                .is_some_and(|l| l.elements().next().is_none())
+    };
+    while timing.remove_descendants(&empty_group) > 0 {}
+
+    // If anything still refers to a deleted shape (triggers, odd
+    // structures), or no animation is left, drop the slide's animations
+    // rather than leave a broken timing tree.
+    let mut any_target = false;
+    timing.walk(&mut |e| any_target |= e.is(ns::P, "spTgt"));
+    let empty_list = {
+        let mut empty = false;
+        timing.walk(&mut |e| {
+            empty |= e.is(ns::P, "childTnLst") && e.elements().next().is_none();
+        });
+        empty
+    };
+    if targets_deleted(timing) || (removed > 0 && (!any_target || empty_list)) {
+        slide_root.remove_children(ns::P, "timing");
+    }
+}
+
 pub(crate) fn sp_tree(slide_root: &Element) -> Result<&Element> {
     slide_root
         .path(&[(ns::P, "cSld"), (ns::P, "spTree")])
@@ -470,14 +535,21 @@ impl Presentation {
         targets.dedup();
 
         let mut removed_ids = HashSet::new();
+        let mut removed_shapes = HashSet::new();
         // Delete from the back so earlier paths stay valid.
         for path in targets.iter().rev() {
             let (last, parent_path) = path.split_last().expect("non-empty path");
             let parent = at_path_mut(tree, parent_path);
             if let Node::Element(e) = parent.children.remove(*last) {
                 rel_ids(&e, &mut removed_ids);
+                e.walk(&mut |el| {
+                    if is_shape_element(el) {
+                        removed_shapes.extend(shape_id(el).map(|id| id.to_string()));
+                    }
+                });
             }
         }
+        drop_shape_references(root, &removed_shapes);
 
         let mut still_used = HashSet::new();
         rel_ids(root, &mut still_used);

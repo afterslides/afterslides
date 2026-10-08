@@ -235,3 +235,48 @@ def test_duplicated_slide_gets_its_own_creation_id() -> None:
     assert ids[0] is not None and ids[1] is not None
     assert ids[0].group(1) == "1234"
     assert ids[1].group(1) != "1234"
+
+
+def click_effect(ctn: int, spid: int) -> str:
+    return (
+        f'<p:par><p:cTn id="{ctn}" fill="hold"><p:stCondLst><p:cond delay="indefinite"/>'
+        f'</p:stCondLst><p:childTnLst><p:par><p:cTn id="{ctn + 1}" presetID="1"'
+        ' presetClass="entr" fill="hold" nodeType="clickEffect"><p:stCondLst>'
+        '<p:cond delay="0"/></p:stCondLst><p:childTnLst><p:set><p:cBhvr>'
+        f'<p:cTn id="{ctn + 2}" dur="1" fill="hold"/><p:tgtEl><p:spTgt spid="{spid}"/>'
+        "</p:tgtEl><p:attrNameLst><p:attrName>style.visibility</p:attrName>"
+        '</p:attrNameLst></p:cBhvr><p:to><p:strVal val="visible"/></p:to></p:set>'
+        "</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>"
+    )
+
+
+ANIMATIONS = (
+    "</p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr><p:timing><p:tnLst><p:par>"
+    '<p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst>'
+    '<p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq">'
+    "<p:childTnLst>" + click_effect(3, 4) + click_effect(10, 2) + "</p:childTnLst></p:cTn>"
+    '<p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond>'
+    '</p:prevCondLst><p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/>'
+    "</p:tgtEl></p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst>"
+    '<p:bldLst><p:bldP spid="4" grpId="0"/></p:bldLst></p:timing>'
+)
+
+
+def with_animations(text: str) -> str:
+    text = re.sub(r"<p:clrMapOvr>.*?</p:clrMapOvr>", "", text)
+    return text.replace("</p:cSld>", ANIMATIONS, 1)
+
+
+def test_deleting_animated_shape_removes_its_animation() -> None:
+    prs = Presentation(patched({"ppt/slides/slide4.xml": with_animations}))
+    prs.shape("Remove Me").delete()
+    xml = zip_entries(prs)["ppt/slides/slide4.xml"].decode()  # fails on dangling spid
+    assert 'spid="2"' in xml  # the chart's animation stays
+    assert 'spid="4"' not in xml
+
+
+def test_deleting_last_animated_shape_removes_timing() -> None:
+    prs = Presentation(patched({"ppt/slides/slide4.xml": with_animations}))
+    prs.shape("Remove Me").delete()
+    prs.shape("Trend").delete()
+    assert "<p:timing>" not in zip_entries(prs)["ppt/slides/slide4.xml"].decode()
