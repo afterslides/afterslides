@@ -18,4 +18,12 @@ if [[ "${1:-}" == "--quick" ]]; then
 else
   step "pytest";         uv run --no-sync pytest -q
 fi
+if command -v dotnet >/dev/null; then
+  step "Open XML SDK validation"
+  dump="$(mktemp -d)"
+  AFTERSLIDES_DUMP_DIR="$dump" uv run --no-sync pytest -q -m "not slow and not libreoffice" >/dev/null
+  cp tests/fixtures/*.pptx "$dump/"
+  dotnet run --project tools/ooxml-validate -c Release -- "$dump"
+  rm -rf "$dump"
+fi
 printf '\n\033[32mAll checks passed.\033[0m\n'

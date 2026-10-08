@@ -100,3 +100,30 @@ jobs:
           uv pip install maturin pytest python-pptx openpyxl
           uv run --no-sync maturin develop --release
       - run: uv run --no-sync pytest -m libreoffice -v
+
+  ooxml-validate:
+    name: Open XML SDK validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: |
+          uv venv --python 3.12
+          uv pip install maturin pytest python-pptx openpyxl
+          uv run --no-sync maturin develop --release
+      - name: Save every deck the tests produce
+        run: uv run --no-sync pytest -m "not slow and not libreoffice" -q
+        env:
+          AFTERSLIDES_DUMP_DIR: ${{ runner.temp }}/decks
+      - name: Validate them
+        run: |
+          cp tests/fixtures/*.pptx "${{ runner.temp }}/decks/"
+          dotnet run --project tools/ooxml-validate -c Release -- "${{ runner.temp }}/decks"
