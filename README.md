@@ -136,7 +136,9 @@ scatter = prs.shape("Scatter").chart
 scatter.replace_xy_data([XySeries("Run 1", x=[1, 2, 3], y=[2.0, 3.5, 3.1])])
 ```
 
-`None` (or NaN) leaves a gap. Number formats from the template, such as
+`None` (or NaN) leaves a gap. In combo charts (for example columns plus a
+line) the number of series must match the template for now, so every
+series stays in its plot. Number formats from the template, such as
 `0%` or `#,##0.00`, are kept and also applied in the embedded workbook.
 
 ### Tables

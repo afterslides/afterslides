@@ -104,6 +104,23 @@ Windows plus an MSRV check (Rust 1.88). Keep it green; don't merge red.
 - `mc:AlternateContent` can contain the same shape twice (Choice and
   Fallback). Edits apply to both (`with_shape_mut`); deletion removes the
   whole `mc:AlternateContent`.
+- **Relationship targets are URIs**: percent-encoded (`image%201.png`) and
+  case-insensitive with respect to part names; zip entries may be stored
+  encoded or decoded. Always go through `Package::resolve`/`targets`, which
+  canonicalize, never compare raw target strings with part names.
+- **Duplicate `cNvPr` ids** occur in real decks. They are renumbered on open
+  (only for affected slides) so `ShapeRef` is unambiguous; Choice/Fallback
+  twins in `mc:AlternateContent` legitimately share an id.
+- **Filtered chart series** (`c15:filtered*Series` in `c:extLst`) keep their
+  `c:idx`/`c:order`; collect ids from every `*:ser`, not just visible ones.
+- **Combo charts**: series counts can't change until plots can be targeted;
+  never leave a plot without series.
+- **Copying a slide** must not leave `r:id`s pointing at relationships that
+  weren't copied (e.g. `p188:commentRel`); also renew `p14:creationId`.
+- **Element order matters** to PowerPoint even where readers are lenient:
+  `p:sp` is `nvSpPr, spPr, style, txBody, extLst`; `extLst` is always last.
+- **Vertical merges** (`rowSpan`/`vMerge`) must be adjusted when rows are
+  inserted or deleted; `invariants.py` checks spans stay inside the table.
 - python-pptx writes `'` quotes in the XML declaration; our writer uses `"`.
   That's fine, but don't compare XML of modified parts byte-wise in tests.
 
@@ -113,6 +130,15 @@ Windows plus an MSRV check (Rust 1.88). Keep it green; don't merge red.
 - Python tests verify output with **independent readers**: python-pptx for
   slides/charts/tables, openpyxl for embedded workbooks, LibreOffice for
   "does another office suite open it".
+- Every deck saved through the `conftest` helpers passes
+  `tests/invariants.py` (references resolve, ids unique, spans valid, ...).
+  Extend it when you learn a new rule PowerPoint enforces.
+- CI validates every saved deck with the Open XML SDK
+  (`tools/ooxml-validate`, needs dotnet; `scripts/check.sh` runs it when
+  dotnet is installed).
+- `tests/test_regressions.py` patches the fixture with constructs from real
+  templates (`patched()`/`replace_once()` in `conftest.py`); prefer that over
+  growing the generated fixture for one-off cases.
 - Add a case to `scripts/make_fixtures.py` when a bug needs a template
   feature the fixture lacks; regenerate and commit the `.pptx`.
 - Real-world templates from users are the best test material. Anonymize them
