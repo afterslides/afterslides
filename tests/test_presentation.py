@@ -9,6 +9,7 @@ import pytest
 import afterslides
 from afterslides import NotFoundError, PackageError, Presentation
 from conftest import TEMPLATE, reopen, zip_entries
+from invariants import check_deck
 
 
 def test_open_from_path_bytes_and_stream(template_path: Path) -> None:
@@ -83,3 +84,7 @@ def test_version() -> None:
 
 def test_reopen_helper(prs: Presentation) -> None:
     assert len(reopen(prs).slides) == 7
+
+
+def test_fixture_satisfies_invariants() -> None:
+    check_deck(TEMPLATE.read_bytes())

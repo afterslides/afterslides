@@ -10,6 +10,7 @@ import pptx
 import pytest
 
 import afterslides
+from invariants import check_deck
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TEMPLATE = FIXTURES / "template.pptx"
@@ -25,17 +26,24 @@ def prs() -> afterslides.Presentation:
     return afterslides.Presentation(TEMPLATE)
 
 
+def saved(deck: afterslides.Presentation) -> bytes:
+    """Saves the deck and checks the structural invariants of the result."""
+    data = deck.to_bytes()
+    check_deck(data)
+    return data
+
+
 def reopen(deck: afterslides.Presentation) -> afterslides.Presentation:
-    return afterslides.Presentation(deck.to_bytes())
+    return afterslides.Presentation(saved(deck))
 
 
 def as_python_pptx(deck: afterslides.Presentation) -> pptx.presentation.Presentation:
     """Reads our output with python-pptx, an independent implementation."""
-    return pptx.Presentation(io.BytesIO(deck.to_bytes()))
+    return pptx.Presentation(io.BytesIO(saved(deck)))
 
 
 def zip_entries(deck: afterslides.Presentation) -> dict[str, bytes]:
-    with zipfile.ZipFile(io.BytesIO(deck.to_bytes())) as z:
+    with zipfile.ZipFile(io.BytesIO(saved(deck))) as z:
         return {name: z.read(name) for name in z.namelist()}
 
 

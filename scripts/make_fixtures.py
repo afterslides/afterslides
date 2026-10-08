@@ -25,6 +25,7 @@ OUT = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 
 P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main"
 P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 
 
 def tiny_png() -> bytes:
@@ -68,6 +69,17 @@ def add_sections(prs, names_and_slides):
         lst = etree.SubElement(section, f"{{{P14}}}sldIdLst")
         for slide in slides:
             etree.SubElement(lst, f"{{{P14}}}sldId", id=str(slide.slide_id))
+
+
+def fix_axis_ids(prs) -> None:
+    """python-pptx writes random negative axis ids; the schema wants unsigned ints."""
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if not shape.has_chart:
+                continue
+            space = shape.chart._chartSpace
+            for el in space.iter(f"{{{C}}}axId", f"{{{C}}}crossAx"):
+                el.set("val", str(abs(int(el.get("val")))))
 
 
 def build_template() -> Presentation:
@@ -168,6 +180,7 @@ def build_template() -> Presentation:
     link.click_action.target_slide = s4
 
     add_sections(prs, [("Intro", [s1, s2, s3]), ("Charts", [s4, s5]), ("Appendix", [s6, s7])])
+    fix_axis_ids(prs)
     return prs
 
 
