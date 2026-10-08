@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Cursor, Read, Seek, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::error::{Error, Result, Target};
 use crate::opc::{Package, rel_type};
@@ -88,20 +89,21 @@ impl Presentation {
         let path = path.as_ref();
         // Write to a sibling temp file first so a failed save never leaves a
         // truncated deck behind, even when overwriting the template.
-        let dir = path.parent().filter(|p| !p.as_os_str().is_empty());
-        let tmp = match dir {
-            Some(dir) => dir.join(format!(
-                ".{}.afterslides-tmp",
-                path.file_name().and_then(|n| n.to_str()).unwrap_or("deck")
-            )),
-            None => format!(
-                ".{}.afterslides-tmp",
-                path.file_name().and_then(|n| n.to_str()).unwrap_or("deck")
-            )
-            .into(),
+        // The name is unique per process and call, so concurrent saves of
+        // the same file don't write into each other's temp file.
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let unique = format!(
+            ".{}.{}-{}.afterslides-tmp",
+            path.file_name().and_then(|n| n.to_str()).unwrap_or("deck"),
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+        let tmp = match path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            Some(dir) => dir.join(unique),
+            None => unique.into(),
         };
         let result = (|| {
-            let file = File::create(&tmp)?;
+            let file = File::create_new(&tmp)?;
             let mut writer = self.write(BufWriter::new(file))?;
             writer.flush()?;
             Ok::<_, Error>(())

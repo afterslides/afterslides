@@ -88,3 +88,27 @@ def test_reopen_helper(prs: Presentation) -> None:
 
 def test_fixture_satisfies_invariants() -> None:
     check_deck(TEMPLATE.read_bytes())
+
+
+def test_concurrent_saves_to_the_same_path(tmp_path: Path) -> None:
+    import threading
+
+    target = tmp_path / "out.pptx"
+    decks = [Presentation(TEMPLATE) for _ in range(8)]
+    errors: list[BaseException] = []
+
+    def save(deck: Presentation) -> None:
+        try:
+            for _ in range(5):
+                deck.save(target)
+        except BaseException as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=save, args=(d,)) for d in decks]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    assert len(Presentation(target).slides) == 7
+    assert [p.name for p in tmp_path.iterdir()] == ["out.pptx"]
