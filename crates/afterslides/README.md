@@ -12,10 +12,10 @@ prs.replace_text(&[("{{customer}}", "Acme")])?;
 
 let slide = prs.slide_at(1)?;
 let chart = prs.find_shape(slide, "Revenue Chart")?.expect("template has the chart");
-prs.set_chart_data(chart, &ChartData {
-    categories: Categories::Labels(vec!["Q1".into(), "Q2".into()]),
-    series: vec![Series { name: "2026".into(), values: vec![Some(1.5), Some(2.0)] }],
-})?;
+prs.set_chart_data(chart, &ChartData::new(
+    Categories::Labels(vec!["Q1".into(), "Q2".into()]),
+    vec![Series::new("2026", vec![Some(1.5), Some(2.0)])],
+))?;
 
 prs.save("report.pptx")?;
 # Ok::<(), afterslides::Error>(())

@@ -19,40 +19,93 @@ use crate::xml::{Document, Element, Node, ns};
 
 /// Categories of a category chart (bar, column, line, pie, area, radar, ...).
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Categories {
     Labels(Vec<String>),
-    /// Numeric categories, including dates as Excel serial numbers.
+    /// Numeric categories, written with the template's number format.
     Numbers(Vec<f64>),
+    /// Dates as Excel serial numbers. Like `Numbers`, but if the template has
+    /// no number format for its categories, a date format is used.
+    Dates(Vec<f64>),
+    /// Multi-level categories (for example year, then quarter). One entry per
+    /// category, outermost level first; all entries have the same depth.
+    Levels(Vec<Vec<String>>),
 }
 
 impl Categories {
     pub fn len(&self) -> usize {
         match self {
             Categories::Labels(v) => v.len(),
-            Categories::Numbers(v) => v.len(),
+            Categories::Numbers(v) | Categories::Dates(v) => v.len(),
+            Categories::Levels(v) => v.len(),
         }
     }
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Number of category levels (1 unless `Levels`).
+    pub fn depth(&self) -> usize {
+        match self {
+            Categories::Levels(v) => v.first().map_or(1, Vec::len).max(1),
+            _ => 1,
+        }
+    }
 }
 
+/// A series of a category chart.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Series {
     pub name: String,
     /// One value per category; `None` leaves a gap.
     pub values: Vec<Option<f64>>,
+    /// Index of the plot (see [`Presentation::chart_types`]) the series
+    /// belongs to. Only needed for combo charts, where it decides whether a
+    /// series is drawn as, say, a column or a line.
+    pub plot: Option<usize>,
+    /// Number format for the values, e.g. `0.0%`. `None` keeps the template's.
+    pub number_format: Option<String>,
+}
+
+impl Series {
+    pub fn new(name: impl Into<String>, values: Vec<Option<f64>>) -> Series {
+        Series {
+            name: name.into(),
+            values,
+            plot: None,
+            number_format: None,
+        }
+    }
+
+    pub fn with_plot(mut self, plot: usize) -> Series {
+        self.plot = Some(plot);
+        self
+    }
+
+    pub fn with_number_format(mut self, format: impl Into<String>) -> Series {
+        self.number_format = Some(format.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ChartData {
     pub categories: Categories,
     pub series: Vec<Series>,
 }
 
+impl ChartData {
+    pub fn new(categories: Categories, series: Vec<Series>) -> ChartData {
+        ChartData { categories, series }
+    }
+}
+
 /// A series of a scatter or bubble chart.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct XySeries {
     pub name: String,
     pub x: Vec<Option<f64>>,
@@ -60,6 +113,25 @@ pub struct XySeries {
     /// Bubble sizes; required for bubble charts, ignored otherwise.
     pub sizes: Option<Vec<Option<f64>>>,
 }
+
+impl XySeries {
+    pub fn new(name: impl Into<String>, x: Vec<Option<f64>>, y: Vec<Option<f64>>) -> XySeries {
+        XySeries {
+            name: name.into(),
+            x,
+            y,
+            sizes: None,
+        }
+    }
+
+    pub fn with_sizes(mut self, sizes: Vec<Option<f64>>) -> XySeries {
+        self.sizes = Some(sizes);
+        self
+    }
+}
+
+/// Date format for date categories when the template has none.
+const DATE_FORMAT: &str = "yyyy\\-mm\\-dd";
 
 /// Elements that precede `c:cat`/`c:xVal` in every series type of the schema.
 const BEFORE_CAT: &[&str] = &[
@@ -232,25 +304,37 @@ fn points(like: &Element, values: &[Option<String>]) -> Vec<Element> {
     out
 }
 
+/// How to format numbers in a cache: an explicit format, the template's
+/// format with a fallback, or the template's format falling back to
+/// `General`.
+enum NumberFormat<'a> {
+    Explicit(&'a str),
+    TemplateOr(&'a str),
+}
+
 /// Rewrites a data reference (`c:cat`, `c:val`, `c:xVal`, ...) in place.
 ///
 /// Literal data stays literal; references get a fresh formula and cache.
+/// Returns the number format written (for numeric data).
 fn write_data(
     holder: &mut Element,
     numeric: bool,
     values: &[Option<String>],
     formula: &str,
-    default_format: &str,
-) {
-    let old_format = read_points(holder).1;
+    format: NumberFormat<'_>,
+) -> Option<String> {
+    let old_format = read_points(holder).1.filter(|f| f != "General");
     let was_literal = holder
         .elements()
         .any(|e| e.is(ns::C, "strLit") || e.is(ns::C, "numLit"));
     let like = holder.clone();
     let mut cache_children = Vec::new();
-    if numeric {
-        let fmt = old_format.unwrap_or_else(|| default_format.to_string());
-        cache_children.push(text_el(&like, "formatCode", &fmt));
+    let fmt = numeric.then(|| match format {
+        NumberFormat::Explicit(f) => f.to_string(),
+        NumberFormat::TemplateOr(fallback) => old_format.unwrap_or_else(|| fallback.to_string()),
+    });
+    if let Some(fmt) = &fmt {
+        cache_children.push(text_el(&like, "formatCode", fmt));
     }
     cache_children.extend(points(&like, values));
 
@@ -277,6 +361,94 @@ fn write_data(
         ),
     };
     holder.children = vec![Node::Element(content)];
+    fmt
+}
+
+/// Writes multi-level categories as `c:multiLvlStrRef`. Levels are stored
+/// innermost first; outer levels only carry a label where a group starts.
+fn write_levels(holder: &mut Element, levels: &[Vec<String>], formula: &str) {
+    let like = holder.clone();
+    let depth = levels.first().map_or(0, Vec::len);
+    let mut cache = vec![new_el(
+        &like,
+        "ptCount",
+        &[("val", &levels.len().to_string())],
+        vec![],
+    )];
+    for level in (0..depth).rev() {
+        let pts = group_starts(levels, level)
+            .into_iter()
+            .map(|(i, label)| {
+                new_el(
+                    &like,
+                    "pt",
+                    &[("idx", &i.to_string())],
+                    vec![text_el(&like, "v", label)],
+                )
+            })
+            .collect();
+        cache.push(new_el(&like, "lvl", &[], pts));
+    }
+    holder.children = vec![Node::Element(new_el(
+        &like,
+        "multiLvlStrRef",
+        &[],
+        vec![
+            text_el(&like, "f", formula),
+            new_el(&like, "multiLvlStrCache", &[], cache),
+        ],
+    ))];
+}
+
+/// Positions where the label of `level` starts a new group: the label
+/// changes, or any outer level does. The innermost level labels every
+/// category.
+fn group_starts(levels: &[Vec<String>], level: usize) -> Vec<(usize, &str)> {
+    let depth = levels.first().map_or(0, Vec::len);
+    levels
+        .iter()
+        .enumerate()
+        .filter(|(i, row)| {
+            level + 1 == depth || *i == 0 || levels[i - 1][..=level] != row[..=level]
+        })
+        .map(|(i, row)| (i, row[level].as_str()))
+        .collect()
+}
+
+/// Reads `c:multiLvlStrRef` back into one label path per category.
+fn read_levels(cat: &Element) -> Option<Vec<Vec<String>>> {
+    let cache = cat
+        .child(ns::C, "multiLvlStrRef")
+        .and_then(|r| r.child(ns::C, "multiLvlStrCache"))
+        .or_else(|| cat.child(ns::C, "multiLvlStrLit"))?;
+    let count: usize = cache
+        .child(ns::C, "ptCount")
+        .and_then(|c| c.attr("val"))
+        .and_then(|v| v.parse().ok())?;
+    // Stored innermost first; we return outermost first.
+    let lvls: Vec<&Element> = cache.children_named(ns::C, "lvl").collect();
+    let mut out = vec![Vec::with_capacity(lvls.len()); count];
+    for lvl in lvls.iter().rev() {
+        let mut current = String::new();
+        let mut labels: Vec<(usize, String)> = lvl
+            .children_named(ns::C, "pt")
+            .filter_map(|pt| {
+                Some((
+                    pt.attr("idx")?.parse().ok()?,
+                    pt.child(ns::C, "v").map(Element::text).unwrap_or_default(),
+                ))
+            })
+            .collect();
+        labels.sort_by_key(|(i, _)| *i);
+        let mut next = labels.into_iter().peekable();
+        for (i, row) in out.iter_mut().enumerate() {
+            while let Some((_, label)) = next.next_if(|(idx, _)| *idx <= i) {
+                current = label;
+            }
+            row.push(current.clone());
+        }
+    }
+    Some(out)
 }
 
 fn write_name(ser: &mut Element, name: &str, formula: &str) {
@@ -400,98 +572,185 @@ fn unquote_sheet(sheet: &str) -> String {
         .unwrap_or_else(|| sheet.to_string())
 }
 
-/// Makes the series list match `count`: extra series are copies of the last
-/// one, surplus series are removed from the end. Returns `(plot, ser)` child
-/// index pairs in order.
-fn resize_series(plot_area: &mut Element, count: usize) -> Result<Vec<(usize, usize)>> {
-    let locate = |pa: &Element| -> Vec<(usize, usize)> {
-        let mut out = Vec::new();
-        for (pi, node) in pa.children.iter().enumerate() {
-            if let Node::Element(plot) = node
-                && is_plot(plot)
-            {
-                for (si, s) in plot.children.iter().enumerate() {
-                    if matches!(s, Node::Element(e) if e.is(ns::C, "ser")) {
-                        out.push((pi, si));
-                    }
-                }
-            }
+/// Plots in document order: their index among `plotArea`'s children and
+/// the child indices of their `c:ser` elements.
+fn plot_layout(plot_area: &Element) -> Vec<(usize, Vec<usize>)> {
+    plot_area
+        .children
+        .iter()
+        .enumerate()
+        .filter_map(|(pi, node)| match node {
+            Node::Element(plot) if is_plot(plot) => Some((
+                pi,
+                plot.children
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, n)| matches!(n, Node::Element(e) if e.is(ns::C, "ser")))
+                    .map(|(si, _)| si)
+                    .collect(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Removes filtered (hidden) series. They live in extension lists and refer
+/// to cells of the old workbook, which we replace, so after a data change
+/// they would show stale data when someone unhides them.
+fn drop_filtered_series(plot_area: &mut Element) {
+    let is_filtered =
+        |e: &Element| e.local().starts_with("filtered") && e.local().ends_with("Series");
+    for plot in plot_area.elements_mut().filter(|e| is_plot(e)) {
+        let Some(ext_lst) = plot.child_mut(ns::C, "extLst") else {
+            continue;
+        };
+        ext_lst.remove_descendants(&is_filtered);
+        ext_lst.remove_descendants(&|e| e.is(ns::C, "ext") && e.elements().next().is_none());
+        if ext_lst.elements().next().is_none() {
+            plot.remove_children(ns::C, "extLst");
         }
-        out
-    };
-    let mut locs = locate(plot_area);
-    let Some(&(last_plot, last_ser)) = locs.last() else {
+    }
+}
+
+/// Decides which plot (index into the layout) each requested series goes to.
+fn assign_plots(
+    layout: &[(usize, Vec<usize>)],
+    types: &[String],
+    requested: &[Option<usize>],
+) -> Result<Vec<usize>> {
+    let with_series: Vec<usize> = (0..layout.len())
+        .filter(|&p| !layout[p].1.is_empty())
+        .collect();
+    if with_series.is_empty() {
         return Err(Error::Unsupported(
             "chart has no series to copy formatting from; add at least one in the template".into(),
         ));
-    };
-    let plots_with_series: HashSet<usize> = locs.iter().map(|(p, _)| *p).collect();
-    if plots_with_series.len() > 1 && count != locs.len() {
+    }
+    let explicit = requested.iter().filter(|p| p.is_some()).count();
+    if explicit == 0 {
+        if with_series.len() == 1 {
+            return Ok(vec![with_series[0]; requested.len()]);
+        }
+        let existing: Vec<usize> = layout
+            .iter()
+            .enumerate()
+            .flat_map(|(p, (_, sers))| std::iter::repeat_n(p, sers.len()))
+            .collect();
+        if existing.len() == requested.len() {
+            return Ok(existing);
+        }
         return Err(Error::Unsupported(format!(
-            "this is a combo chart with {} series in {} plots; pass exactly {} series so \
-             each keeps its plot (adding or removing series in combo charts is not supported yet)",
-            locs.len(),
-            plots_with_series.len(),
-            locs.len()
+            "this is a combo chart ({}) with {} series; to pass {} series, say which plot \
+             each one belongs to (Series.plot, an index into the chart types)",
+            types.join(", "),
+            existing.len(),
+            requested.len()
         )));
     }
-
-    if count > locs.len() {
-        // Filtered (hidden) series live in extension lists but still occupy
-        // their c:idx/c:order, so collect from every series element.
-        let mut used_idx: Vec<u64> = Vec::new();
-        let mut used_order: Vec<u64> = Vec::new();
-        let mut used_guids: HashSet<String> = HashSet::new();
-        plot_area.walk(&mut |e| {
-            if e.local() == "ser" {
-                let num = |name| {
-                    e.child(ns::C, name)
-                        .and_then(|c| c.attr("val"))
-                        .and_then(|v| v.parse::<u64>().ok())
-                };
-                used_idx.extend(num("idx"));
-                used_order.extend(num("order"));
+    if explicit != requested.len() {
+        return Err(Error::InvalidArgument(
+            "set the plot of every series or of none".into(),
+        ));
+    }
+    let assignment: Vec<usize> = requested.iter().map(|p| p.expect("checked")).collect();
+    for &p in &assignment {
+        match layout.get(p) {
+            None => {
+                return Err(Error::InvalidArgument(format!(
+                    "plot {p} does not exist; the chart has {} ({})",
+                    layout.len(),
+                    types.join(", ")
+                )));
             }
-            if e.local() == "uniqueId"
-                && let Some(v) = e.attr("val")
-            {
-                used_guids.insert(v.to_string());
+            Some((_, sers)) if sers.is_empty() => {
+                return Err(Error::Unsupported(format!(
+                    "plot {p} ({}) has no series in the template to copy formatting from",
+                    types[p]
+                )));
             }
-        });
-        let template = child_el(child_el(plot_area, last_plot), last_ser).clone();
-        let plot = child_el_mut(plot_area, last_plot);
-        for (insert_at, _) in (last_ser + 1..).zip(locs.len()..count) {
-            let mut copy = template.clone();
-            let idx = used_idx.iter().max().map_or(0, |m| m + 1);
-            let order = used_order.iter().max().map_or(0, |m| m + 1);
-            used_idx.push(idx);
-            used_order.push(order);
-            if let Some(e) = copy.child_mut(ns::C, "idx") {
-                e.set_attr("val", idx.to_string());
-            }
-            if let Some(e) = copy.child_mut(ns::C, "order") {
-                e.set_attr("val", order.to_string());
-            }
-            copy.walk_mut(&mut |e| {
-                if e.local() == "uniqueId" && e.attr("val").is_some() {
-                    let guid = (0u64..)
-                        .map(|n| format!("{{AF7E0000-0000-4000-8000-{:012X}}}", idx * 1000 + n))
-                        .find(|g| !used_guids.contains(g))
-                        .expect("unbounded");
-                    used_guids.insert(guid.clone());
-                    e.set_attr("val", guid);
-                }
-            });
-            plot.children.insert(insert_at, Node::Element(copy));
+            _ => {}
         }
-        locs = locate(plot_area);
+    }
+    for &p in &with_series {
+        if !assignment.contains(&p) {
+            return Err(Error::Unsupported(format!(
+                "plot {p} ({}) would be left without series; give it at least one",
+                types[p]
+            )));
+        }
+    }
+    Ok(assignment)
+}
+
+/// Makes each plot hold as many series as are assigned to it (copying the
+/// plot's last series, or removing from the end) and returns, for each
+/// requested series in order, the location of its `c:ser` element.
+fn arrange_series(plot_area: &mut Element, assignment: &[usize]) -> Vec<(usize, usize)> {
+    let mut used_idx: Vec<u64> = Vec::new();
+    let mut used_guids: HashSet<String> = HashSet::new();
+    plot_area.walk(&mut |e| {
+        if e.local() == "ser"
+            && let Some(v) = e
+                .child(ns::C, "idx")
+                .and_then(|c| c.attr("val"))
+                .and_then(|v| v.parse::<u64>().ok())
+        {
+            used_idx.push(v);
+        }
+        if e.local() == "uniqueId"
+            && let Some(v) = e.attr("val")
+        {
+            used_guids.insert(v.to_string());
+        }
+    });
+
+    let layout = plot_layout(plot_area);
+    for (p, (pi, sers)) in layout.iter().enumerate() {
+        let wanted = assignment.iter().filter(|&&a| a == p).count();
+        let plot = child_el_mut(plot_area, *pi);
+        if let Some(&last) = sers.last() {
+            let template = child_el(plot, last).clone();
+            for insert_at in (last + 1..).take(wanted.saturating_sub(sers.len())) {
+                let mut copy = template.clone();
+                let idx = used_idx.iter().max().map_or(0, |m| m + 1);
+                used_idx.push(idx);
+                if let Some(e) = copy.child_mut(ns::C, "idx") {
+                    e.set_attr("val", idx.to_string());
+                }
+                copy.walk_mut(&mut |e| {
+                    if e.local() == "uniqueId" && e.attr("val").is_some() {
+                        let guid = (0u64..)
+                            .map(|n| format!("{{AF7E0000-0000-4000-8000-{:012X}}}", idx * 1000 + n))
+                            .find(|g| !used_guids.contains(g))
+                            .expect("unbounded");
+                        used_guids.insert(guid.clone());
+                        e.set_attr("val", guid);
+                    }
+                });
+                plot.children.insert(insert_at, Node::Element(copy));
+            }
+        }
+        for &si in sers.iter().skip(wanted).rev() {
+            plot.children.remove(si);
+        }
     }
 
-    while locs.len() > count {
-        let (pi, si) = locs.pop().expect("non-empty");
-        child_el_mut(plot_area, pi).children.remove(si);
+    let layout = plot_layout(plot_area);
+    let mut next = vec![0usize; layout.len()];
+    let mut locs = Vec::with_capacity(assignment.len());
+    for (k, &p) in assignment.iter().enumerate() {
+        let (pi, sers) = &layout[p];
+        let si = sers[next[p]];
+        next[p] += 1;
+        // Series are drawn and listed in c:order; follow the request order.
+        if let Some(order) =
+            child_el_mut(child_el_mut(plot_area, *pi), si).child_mut(ns::C, "order")
+        {
+            order.set_attr("val", k.to_string());
+        }
+        locs.push((*pi, si));
     }
-    Ok(locate(plot_area))
+    locs
 }
 
 fn child_el(el: &Element, i: usize) -> &Element {
@@ -558,6 +817,55 @@ fn build_workbook(sheet: &str, columns: &[Column]) -> Result<Vec<u8>> {
     wb.save_to_buffer().map_err(wb_err)
 }
 
+fn read_categories(cat: &Element) -> Categories {
+    if let Some(levels) = read_levels(cat) {
+        return Categories::Levels(levels);
+    }
+    let numeric = cat
+        .elements()
+        .any(|e| e.is(ns::C, "numRef") || e.is(ns::C, "numLit"));
+    let (pts, _) = read_points(cat);
+    if numeric {
+        Categories::Numbers(
+            pts.into_iter()
+                .map(|p| p.and_then(|s| s.parse().ok()).unwrap_or(f64::NAN))
+                .collect(),
+        )
+    } else {
+        Categories::Labels(pts.into_iter().map(Option::unwrap_or_default).collect())
+    }
+}
+
+/// Workbook columns holding the categories (one per level).
+fn category_columns(categories: &Categories) -> Vec<Column> {
+    let column = |cells| Column {
+        header: None,
+        cells,
+        format: None,
+    };
+    match categories {
+        Categories::Labels(v) => vec![column(
+            v.iter().map(|s| Some(Cell::Text(s.clone()))).collect(),
+        )],
+        Categories::Numbers(v) | Categories::Dates(v) => {
+            vec![column(v.iter().map(|x| Some(Cell::Number(*x))).collect())]
+        }
+        Categories::Levels(levels) => {
+            let depth = categories.depth();
+            (0..depth)
+                .map(|level| {
+                    // Like Excel's layout: a label only where its group starts.
+                    let mut cells: Vec<Option<Cell>> = (0..levels.len()).map(|_| None).collect();
+                    for (i, label) in group_starts(levels, level) {
+                        cells[i] = Some(Cell::Text(label.to_string()));
+                    }
+                    column(cells)
+                })
+                .collect()
+        }
+    }
+}
+
 fn check_finite(what: &str, values: impl IntoIterator<Item = Option<f64>>) -> Result<()> {
     match values.into_iter().flatten().find(|v| !v.is_finite()) {
         Some(bad) => Err(Error::InvalidArgument(format!(
@@ -608,32 +916,41 @@ impl Presentation {
     pub fn chart_data(&self, shape: ShapeRef) -> Result<ChartData> {
         let part = self.chart_part(shape)?;
         let pa = plot_area(self.pkg.xml(&part)?)?;
-        let series = all_series(pa);
-        let categories = match series.first().and_then(|s| s.child(ns::C, "cat")) {
-            Some(cat) => {
-                let numeric = cat
-                    .elements()
-                    .any(|e| e.is(ns::C, "numRef") || e.is(ns::C, "numLit"));
-                let (pts, _) = read_points(cat);
-                if numeric {
-                    Categories::Numbers(
-                        pts.into_iter()
-                            .map(|p| p.and_then(|s| s.parse().ok()).unwrap_or(f64::NAN))
-                            .collect(),
-                    )
-                } else {
-                    Categories::Labels(pts.into_iter().map(Option::unwrap_or_default).collect())
-                }
-            }
+        let layout = plot_layout(pa);
+        let mut series: Vec<(usize, &Element)> = layout
+            .iter()
+            .enumerate()
+            .flat_map(|(p, (pi, sers))| {
+                let plot = child_el(pa, *pi);
+                sers.iter().map(move |&si| (p, child_el(plot, si)))
+            })
+            .collect();
+        // Categories come from the first series in the file; series in a
+        // damaged chart may disagree on them.
+        let categories = match series.first().and_then(|(_, s)| s.child(ns::C, "cat")) {
+            Some(cat) => read_categories(cat),
             None => Categories::Labels(Vec::new()),
         };
+        // Present series in the order PowerPoint lists them.
+        series.sort_by_key(|(_, ser)| {
+            ser.child(ns::C, "order")
+                .and_then(|o| o.attr("val"))
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(u64::MAX)
+        });
+        let combo = layout.iter().filter(|(_, sers)| !sers.is_empty()).count() > 1;
         Ok(ChartData {
             categories,
             series: series
                 .into_iter()
-                .map(|ser| Series {
-                    name: series_name(ser),
-                    values: read_numbers(ser.child(ns::C, "val")),
+                .map(|(p, ser)| {
+                    let val = ser.child(ns::C, "val");
+                    Series {
+                        name: series_name(ser),
+                        values: read_numbers(val),
+                        plot: combo.then_some(p),
+                        number_format: val.and_then(|v| read_points(v).1),
+                    }
                 })
                 .collect(),
         })
@@ -658,13 +975,28 @@ impl Presentation {
 
     /// Replaces the data of a category chart.
     ///
-    /// Series beyond the template's are copies of its last series; surplus
-    /// template series are removed. For combo charts, series are filled in
-    /// document order across plots.
+    /// Each plot keeps as many series as are assigned to it: extra series
+    /// are copies of the plot's last series (formatting included), surplus
+    /// ones are removed from the end. In combo charts, use [`Series::plot`]
+    /// to say which plot a series belongs to; without it, the number of
+    /// series must match the template.
     pub fn set_chart_data(&mut self, shape: ShapeRef, data: &ChartData) -> Result<()> {
         let n = data.categories.len();
-        if let Categories::Numbers(v) = &data.categories {
-            check_finite("categories", v.iter().copied().map(Some))?;
+        match &data.categories {
+            Categories::Numbers(v) | Categories::Dates(v) => {
+                check_finite("categories", v.iter().copied().map(Some))?;
+            }
+            Categories::Levels(v) => {
+                let depth = data.categories.depth();
+                if depth < 2 || v.iter().any(|row| row.len() != depth) {
+                    return Err(Error::InvalidArgument(
+                        "multi-level categories need at least two levels, the same for every \
+                         category"
+                            .into(),
+                    ));
+                }
+            }
+            Categories::Labels(_) => {}
         }
         for s in &data.series {
             check_finite(&s.name, s.values.iter().copied())?;
@@ -678,70 +1010,97 @@ impl Presentation {
         }
         let part = self.chart_part(shape)?;
         let doc = self.pkg.xml(&part)?;
-        if plot_area(doc)?.elements().any(is_xy_plot) {
+        let pa = plot_area(doc)?;
+        if pa.elements().any(is_xy_plot) {
             return Err(Error::Unsupported(
                 "this is a scatter or bubble chart; use set_chart_xy_data".into(),
             ));
         }
+        let types: Vec<String> = plot_layout(pa)
+            .iter()
+            .map(|(pi, _)| child_el(pa, *pi).local().to_string())
+            .collect();
+        let requested: Vec<Option<usize>> = data.series.iter().map(|s| s.plot).collect();
+        let assignment = assign_plots(&plot_layout(pa), &types, &requested)?;
         // Fail before touching the chart if the workbook can't be written.
-        build_workbook(&unquote_sheet(&sheet_ref(plot_area(doc)?)), &[])?;
+        build_workbook(&unquote_sheet(&sheet_ref(pa)), &[])?;
 
         let doc = self.pkg.xml_mut(&part)?;
         let pa = plot_area_mut(doc)?;
         let sheet = sheet_ref(pa);
-        let locs = resize_series(pa, data.series.len())?;
+        drop_filtered_series(pa);
+        let locs = arrange_series(pa, &assignment);
 
-        let (cat_numeric, cat_strings, cat_cells): (bool, Vec<Option<String>>, Vec<Option<Cell>>) =
-            match &data.categories {
-                Categories::Labels(v) => (
-                    false,
-                    v.iter().cloned().map(Some).collect(),
-                    v.iter().cloned().map(|s| Some(Cell::Text(s))).collect(),
-                ),
-                Categories::Numbers(v) => (
-                    true,
-                    v.iter().map(|x| Some(format_number(*x))).collect(),
-                    v.iter().map(|x| Some(Cell::Number(*x))).collect(),
-                ),
-            };
-
-        let mut columns = vec![Column {
-            header: None,
-            cells: cat_cells,
-            format: None,
-        }];
+        let depth = data.categories.depth();
+        let mut columns = category_columns(&data.categories);
+        let cat_range = if depth > 1 {
+            format!(
+                "{sheet}!${}$2:${}${}",
+                col_letter(0),
+                col_letter(depth - 1),
+                n.max(1) + 1
+            )
+        } else {
+            range_ref(&sheet, 0, 1, n)
+        };
         for (k, ((pi, si), series)) in locs.iter().zip(&data.series).enumerate() {
-            let col = k + 1;
+            let col = depth + k;
             let ser = child_el_mut(child_el_mut(pa, *pi), *si);
             write_name(ser, &series.name, &cell_ref(&sheet, col, 0));
-            if cat_numeric && columns[0].format.is_none() {
-                columns[0].format = ser.child(ns::C, "cat").and_then(|c| read_points(c).1);
-            }
+
             let cat = ser.ensure_child("cat", BEFORE_CAT);
-            write_data(
-                cat,
-                cat_numeric,
-                &cat_strings,
-                &range_ref(&sheet, 0, 1, n),
-                "General",
-            );
+            match &data.categories {
+                Categories::Labels(v) => {
+                    let labels: Vec<Option<String>> = v.iter().cloned().map(Some).collect();
+                    write_data(
+                        cat,
+                        false,
+                        &labels,
+                        &cat_range,
+                        NumberFormat::TemplateOr("General"),
+                    );
+                }
+                Categories::Numbers(v) | Categories::Dates(v) => {
+                    let fallback = if matches!(data.categories, Categories::Dates(_)) {
+                        DATE_FORMAT
+                    } else {
+                        "General"
+                    };
+                    let strings: Vec<Option<String>> =
+                        v.iter().map(|x| Some(format_number(*x))).collect();
+                    let written = write_data(
+                        cat,
+                        true,
+                        &strings,
+                        &cat_range,
+                        NumberFormat::TemplateOr(fallback),
+                    );
+                    if k == 0 {
+                        columns[0].format = written;
+                    }
+                }
+                Categories::Levels(levels) => write_levels(cat, levels, &cat_range),
+            }
 
             let mut values = series.values.clone();
             values.resize(n, None);
             let val = ser.ensure_child("val", &before(&["cat"]));
-            write_data(
+            let format = match &series.number_format {
+                Some(f) => NumberFormat::Explicit(f),
+                None => NumberFormat::TemplateOr("General"),
+            };
+            let written = write_data(
                 val,
                 true,
                 &number_strings(&values),
                 &range_ref(&sheet, col, 1, n),
-                "General",
+                format,
             );
-            let format = read_points(val).1;
             prune_points(ser, n);
             columns.push(Column {
                 header: Some(series.name.clone()),
                 cells: number_cells(&values),
-                format,
+                format: written,
             });
         }
         self.write_embedded_workbook(&part, &unquote_sheet(&sheet), &columns)
@@ -778,11 +1137,17 @@ impl Presentation {
                 )));
             }
         }
+        let types: Vec<String> = plot_layout(pa)
+            .iter()
+            .map(|(pi, _)| child_el(pa, *pi).local().to_string())
+            .collect();
+        let assignment = assign_plots(&plot_layout(pa), &types, &vec![None; series.len()])?;
 
         let doc = self.pkg.xml_mut(&part)?;
         let pa = plot_area_mut(doc)?;
         let sheet = sheet_ref(pa);
-        let locs = resize_series(pa, series.len())?;
+        drop_filtered_series(pa);
+        let locs = arrange_series(pa, &assignment);
         let width = if bubble { 3 } else { 2 };
         let mut columns = Vec::new();
         for (k, ((pi, si), s)) in locs.iter().zip(series).enumerate() {
@@ -790,24 +1155,23 @@ impl Presentation {
             let n = s.x.len();
             let ser = child_el_mut(child_el_mut(pa, *pi), *si);
             write_name(ser, &s.name, &cell_ref(&sheet, yc, 0));
+            let template = NumberFormat::TemplateOr("General");
             let x = ser.ensure_child("xVal", BEFORE_CAT);
-            write_data(
+            let x_format = write_data(
                 x,
                 true,
                 &number_strings(&s.x),
                 &range_ref(&sheet, xc, 1, n),
-                "General",
+                NumberFormat::TemplateOr("General"),
             );
-            let x_format = read_points(x).1;
             let y = ser.ensure_child("yVal", &before(&["xVal"]));
-            write_data(
+            let y_format = write_data(
                 y,
                 true,
                 &number_strings(&s.y),
                 &range_ref(&sheet, yc, 1, n),
-                "General",
+                template,
             );
-            let y_format = read_points(y).1;
             columns.push(Column {
                 header: Some("X".into()),
                 cells: number_cells(&s.x),
@@ -821,17 +1185,17 @@ impl Presentation {
             if bubble {
                 let sizes = s.sizes.as_deref().unwrap_or_default();
                 let b = ser.ensure_child("bubbleSize", &before(&["xVal", "yVal"]));
-                write_data(
+                let b_format = write_data(
                     b,
                     true,
                     &number_strings(sizes),
                     &range_ref(&sheet, bc, 1, n),
-                    "General",
+                    NumberFormat::TemplateOr("General"),
                 );
                 columns.push(Column {
                     header: Some("Size".into()),
                     cells: number_cells(sizes),
-                    format: None,
+                    format: b_format,
                 });
             }
             prune_points(ser, n);
@@ -933,6 +1297,44 @@ impl Presentation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn levels(rows: &[&[&str]]) -> Vec<Vec<String>> {
+        rows.iter()
+            .map(|r| r.iter().map(|s| s.to_string()).collect())
+            .collect()
+    }
+
+    #[test]
+    fn group_starts_by_level() {
+        let l = levels(&[&["A", "x"], &["A", "y"], &["B", "x"], &["A", "x"]]);
+        assert_eq!(group_starts(&l, 0), [(0, "A"), (2, "B"), (3, "A")]);
+        assert_eq!(
+            group_starts(&l, 1),
+            [(0, "x"), (1, "y"), (2, "x"), (3, "x")]
+        );
+    }
+
+    #[test]
+    fn multi_level_round_trip() {
+        let l = levels(&[
+            &["2025", "H1", "Jan"],
+            &["2025", "H1", "Feb"],
+            &["2025", "H2", "Jul"],
+            &["2026", "H1", "Jan"],
+        ]);
+        let xml = r#"<c:cat xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"/>"#;
+        let mut doc = Document::parse(xml.as_bytes()).unwrap();
+        write_levels(&mut doc.root, &l, "Sheet1!$A$2:$C$5");
+        assert_eq!(read_levels(&doc.root).unwrap(), l);
+        let out = String::from_utf8(doc.to_bytes()).unwrap();
+        // Innermost level first, outer levels only where groups start.
+        let lvls: Vec<usize> = out
+            .split("<c:lvl>")
+            .skip(1)
+            .map(|l| l.matches("<c:pt ").count())
+            .collect();
+        assert_eq!(lvls, [4, 3, 2]);
+    }
 
     #[test]
     fn column_letters() {

@@ -87,76 +87,67 @@ fn replaces_split_placeholders() {
 fn fills_category_chart_with_more_series() {
     let mut prs = open();
     let chart = shape(&prs, 1, "Revenue Chart");
-    let data = ChartData {
-        categories: Categories::Labels(vec!["North".into(), "South".into(), "East".into()]),
-        series: vec![
-            Series {
-                name: "Plan".into(),
-                values: vec![Some(1.0), Some(2.0), Some(3.0)],
-            },
-            Series {
-                name: "Actual".into(),
-                values: vec![Some(1.5), None, Some(2.5)],
-            },
-            Series {
-                name: "Forecast".into(),
-                values: vec![Some(4.0), Some(5.0)],
-            },
+    let data = ChartData::new(
+        Categories::Labels(vec!["North".into(), "South".into(), "East".into()]),
+        vec![
+            Series::new("Plan", vec![Some(1.0), Some(2.0), Some(3.0)]),
+            Series::new("Actual", vec![Some(1.5), None, Some(2.5)]),
+            Series::new("Forecast", vec![Some(4.0), Some(5.0)]),
         ],
-    };
+    );
     prs.set_chart_data(chart, &data).unwrap();
     let prs = reopen(&mut prs);
     let read = prs.chart_data(shape(&prs, 1, "Revenue Chart")).unwrap();
-    let mut expected = data.clone();
-    expected.series[2].values.push(None);
-    assert_eq!(read, expected);
+    assert_eq!(read.categories, data.categories);
+    let values: Vec<_> = read
+        .series
+        .iter()
+        .map(|s| (s.name.as_str(), s.values.clone()))
+        .collect();
+    assert_eq!(
+        values,
+        [
+            ("Plan", vec![Some(1.0), Some(2.0), Some(3.0)]),
+            ("Actual", vec![Some(1.5), None, Some(2.5)]),
+            ("Forecast", vec![Some(4.0), Some(5.0), None]),
+        ]
+    );
 }
 
 #[test]
 fn fills_chart_with_fewer_series() {
     let mut prs = open();
     let chart = shape(&prs, 1, "Revenue Chart");
-    let data = ChartData {
-        categories: Categories::Labels(vec!["A".into()]),
-        series: vec![Series {
-            name: "Only".into(),
-            values: vec![Some(42.0)],
-        }],
-    };
+    let data = ChartData::new(
+        Categories::Labels(vec!["A".into()]),
+        vec![Series::new("Only", vec![Some(42.0)])],
+    );
     prs.set_chart_data(chart, &data).unwrap();
     let prs = reopen(&mut prs);
-    assert_eq!(prs.chart_data(chart).unwrap(), data);
+    let read = prs.chart_data(chart).unwrap();
+    assert_eq!(read.categories, data.categories);
+    assert_eq!(read.series.len(), 1);
+    assert_eq!(read.series[0].values, [Some(42.0)]);
 }
 
 #[test]
 fn fills_xy_charts() {
     let mut prs = open();
     let scatter = shape(&prs, 4, "Scatter");
-    let series = vec![XySeries {
-        name: "Run 1".into(),
-        x: vec![Some(0.0), Some(1.0)],
-        y: vec![Some(1.0), Some(4.0)],
-        sizes: None,
-    }];
+    let series = vec![XySeries::new(
+        "Run 1",
+        vec![Some(0.0), Some(1.0)],
+        vec![Some(1.0), Some(4.0)],
+    )];
     prs.set_chart_xy_data(scatter, &series).unwrap();
     assert!(
-        prs.set_chart_data(
-            scatter,
-            &ChartData {
-                categories: Categories::Labels(vec![]),
-                series: vec![],
-            }
-        )
-        .is_err()
+        prs.set_chart_data(scatter, &ChartData::new(Categories::Labels(vec![]), vec![]),)
+            .is_err()
     );
 
     let bubbles = shape(&prs, 4, "Bubbles");
-    let bubble_series = vec![XySeries {
-        name: "M".into(),
-        x: vec![Some(1.0)],
-        y: vec![Some(2.0)],
-        sizes: Some(vec![Some(3.0)]),
-    }];
+    let bubble_series =
+        vec![XySeries::new("M", vec![Some(1.0)], vec![Some(2.0)]).with_sizes(vec![Some(3.0)])];
     prs.set_chart_xy_data(bubbles, &bubble_series).unwrap();
 
     let prs = reopen(&mut prs);
@@ -271,13 +262,10 @@ fn duplicates_slide_with_independent_chart() {
     );
     prs.set_chart_data(
         copy_chart,
-        &ChartData {
-            categories: Categories::Labels(vec!["X".into()]),
-            series: vec![Series {
-                name: "S".into(),
-                values: vec![Some(1.0)],
-            }],
-        },
+        &ChartData::new(
+            Categories::Labels(vec!["X".into()]),
+            vec![Series::new("S", vec![Some(1.0)])],
+        ),
     )
     .unwrap();
     let prs = reopen(&mut prs);
