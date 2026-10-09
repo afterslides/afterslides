@@ -136,9 +136,36 @@ scatter = prs.shape("Scatter").chart
 scatter.replace_xy_data([XySeries("Run 1", x=[1, 2, 3], y=[2.0, 3.5, 3.1])])
 ```
 
-`None` (or NaN) leaves a gap. In combo charts (for example columns plus a
-line) the number of series must match the template for now, so every
-series stays in its plot. Number formats from the template, such as
+`None` (or NaN) leaves a gap.
+
+Multi-level categories are tuples, outermost level first; a pandas
+`MultiIndex` works the same way:
+
+```python
+chart.replace_data(
+    [("2025", "Q3"), ("2025", "Q4"), ("2026", "Q1")],
+    {"Revenue": [1.2, 1.4, 1.1]},
+)
+```
+
+In **combo charts** (say, columns plus a line) each series belongs to a plot.
+`chart.types` lists the plots, and `Series.plot` picks one; each plot copies
+the formatting of its own template series:
+
+```python
+chart.types               # ['barChart', 'lineChart']
+chart.replace_data(
+    ["Q1", "Q2", "Q3"],
+    [
+        Series("Revenue 2025", [10, 12, 9], plot=0),
+        Series("Revenue 2026", [11, 14, 10], plot=0),
+        Series("Margin", [0.21, 0.24, 0.19], plot=1, number_format="0%"),
+    ],
+)
+```
+
+`Series.number_format` overrides the template's number format. Date
+categories get a date format if the template has none. Number formats from the template, such as
 `0%` or `#,##0.00`, are kept and also applied in the embedded workbook.
 
 ### Tables

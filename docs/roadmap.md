@@ -4,42 +4,17 @@ Priorities follow the template-filling use case: real corporate templates
 must come out of afterslides without PowerPoint asking to repair them.
 Open an issue if you need something that is further down.
 
-## M2: no corrupt output (in progress)
+## Done
 
-Checks first, so CI sees what PowerPoint would complain about:
-
-- Invariant checks on every test output: every `r:*` id resolves, every
-  relationship target exists, unique `c:idx`/`c:order` per chart (including
-  filtered series), unique shape ids per slide, no row/column spans past the
-  table, a content type for every part.
-- Validate test outputs with the Open XML SDK in CI.
-
-Fixes for known ways to produce broken files:
-
-- Relationship targets that are percent-encoded or differ in case from the
-  part name.
-- Duplicate shape ids on a slide (PowerPoint tolerates them; we must not edit
-  or delete the wrong shape).
-- Slide duplication with modern comments (`p188:commentRel`).
-- New chart series colliding with filtered series (`c15:filteredSeries`).
-- `p:txBody` inserted after `p:extLst` when setting text on an empty shape.
-- Non-finite numbers in chart data.
-- Tables with vertically merged cells when growing or shrinking.
-- Combo charts: refuse ambiguous series changes until plots can be targeted.
-
-## M3: real-world fixture corpus
-
-Anonymized decks saved by PowerPoint (and other suites) covering
-`mc:AlternateContent`, chart style/colour parts, `themeOverride`, data point
-overrides, combo charts and secondary axes, date axes, multi-level
-categories, merged cells, comments, custom shows, SmartArt, OLE, media and
-animations.
-
-## M4: chart completeness
-
-- Choose the plot (and template series) a new series is copied from.
-- Filtered series, multi-level categories, data labels from cell ranges.
-- Edit the embedded workbook in place, keeping its formatting and formulas.
+- **M2, no corrupt output**: invariant checks and Open XML SDK validation on
+  every test output; fixes for percent-encoded targets, duplicate shape ids,
+  comments on copied slides, filtered series, element order, table merges,
+  combo charts, animations of deleted shapes.
+- **M3, real-world corpus**: ~150 decks from python-pptx and Apache POI,
+  every edit applied to each, results compared with their input
+  (`docs/testing.md`).
+- **M4, chart completeness**: plot targeting in combo charts, multi-level
+  categories, number format overrides, date categories, filtered series.
 
 ## M5: API freeze for 1.0
 
@@ -49,6 +24,15 @@ animations.
   layers internal.
 - Placeholder text in notes, layouts and chart titles; hide slides; replace
   pictures; find placeholders by type/index.
+
+## Later
+
+- Edit the embedded workbook in place instead of regenerating it, keeping
+  workbook styles, Excel tables and defined names. Deferred: the workbook
+  is only visible behind *Edit Data*, and keeping tables and names
+  consistent is a lot of risk for little visible benefit.
+- Data labels from cell ranges (`c15:datalabelsRange`), custom error bars.
+- Adding a plot to, or removing one from, a combo chart.
 
 ## M6: releases
 

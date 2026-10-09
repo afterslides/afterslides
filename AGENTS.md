@@ -73,6 +73,9 @@ Windows plus an MSRV check (Rust 1.88). Keep it green; don't merge red.
 - **No competitor names.** Never write the name of the commercial library we
   replace in code, docs, commits or package metadata. Say "a commercial PPTX
   library".
+- **Public Rust data types** that may grow (`Series`, `ChartData`,
+  `XySeries`, `Categories`, `Error`) are `#[non_exhaustive]` with
+  constructors (`Series::new(..).with_plot(..)`); add fields, never remove.
 - **Commits** are small, imperative subject (≤ 72 chars), body explains why.
   No tool or assistant attribution lines.
 - **License headers**: none per file; the project is LGPL-3.0-or-later
@@ -113,8 +116,13 @@ Windows plus an MSRV check (Rust 1.88). Keep it green; don't merge red.
   twins in `mc:AlternateContent` legitimately share an id.
 - **Filtered chart series** (`c15:filtered*Series` in `c:extLst`) keep their
   `c:idx`/`c:order`; collect ids from every `*:ser`, not just visible ones.
-- **Combo charts**: series counts can't change until plots can be targeted;
-  never leave a plot without series.
+- **Combo charts**: series are assigned to plots (`Series::plot`); each plot
+  is resized from its own last series (bar and line series have different
+  child elements, so never copy across plots). Never leave a plot without
+  series.
+- **Multi-level categories** (`c:multiLvlStrRef`): `c:lvl` elements are
+  stored innermost first; outer levels only have a `c:pt` where a group
+  starts.
 - **Copying a slide** must not leave `r:id`s pointing at relationships that
   weren't copied (e.g. `p188:commentRel`); also renew `p14:creationId`.
 - **Element order matters** to PowerPoint even where readers are lenient:

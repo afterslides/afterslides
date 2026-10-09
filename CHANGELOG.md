@@ -21,6 +21,13 @@ contain breaking changes.
 - Delete, duplicate and move slides, keeping sections, custom shows, notes and
   hyperlinks consistent.
 - Python package with typed API, pandas DataFrame and date support.
+- Combo charts: `Series.plot` chooses the plot a series goes into; each plot
+  copies the formatting of its own template series.
+- Multi-level chart categories (tuples / pandas `MultiIndex`), read and write.
+- `Series.number_format` overrides the template's number format; date
+  categories get a date format when the template has none.
+- Filtered (hidden) chart series are removed when data is replaced, since
+  they would refer to cells of the old workbook.
 
 ### Fixed
 
