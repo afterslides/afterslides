@@ -15,15 +15,10 @@ Open an issue if you need something that is further down.
   (`docs/testing.md`).
 - **M4, chart completeness**: plot targeting in combo charts, multi-level
   categories, number format overrides, date categories, filtered series.
-
-## M5: API freeze for 1.0
-
-- Settle shape-handle semantics and text conventions (`\n`/`\v` everywhere,
-  including `replace_text`).
-- Keep the XML and package layers internal (chart data types are already
-  `#[non_exhaustive]`; shape and slide types still need it).
-- Placeholder text in notes, layouts and chart titles; hide slides; replace
-  pictures; find placeholders by type/index.
+- **M5, API for 1.0**: private XML/package layers, `#[non_exhaustive]`
+  data types, newline conventions in `replace_text`, notes and chart text,
+  hidden slides, placeholders by type/index, picture replacement, live
+  shape handles.
 
 ## M6: releases
 

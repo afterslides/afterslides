@@ -46,10 +46,11 @@ prs.save("report.pptx")
   categories.
 - **Tables**: fill rows; the table grows (copying the formatting of its last
   row) or shrinks to fit. Insert and delete rows and columns.
-- **Shapes**: find by name (as shown in the Selection Pane), alt text or kind,
-  including inside groups. Set text, delete.
+- **Shapes**: find by name (as shown in the Selection Pane), alt text, kind
+  or placeholder type, including inside groups. Set text, replace pictures,
+  delete.
 - **Slides**: delete, duplicate (with independent chart copies, e.g. one slide
-  per region), reorder. Sections, notes, hyperlinks and unused media are kept
+  per region), reorder, hide, read and write speaker notes. Sections, notes, hyperlinks and unused media are kept
   consistent so PowerPoint never asks to repair the file.
 - **Faithful**: everything you don't touch is written back byte for byte.
 - **Fast and lean**: filling a small template (open, replace text, chart and
@@ -167,6 +168,28 @@ chart.replace_data(
 `Series.number_format` overrides the template's number format. Date
 categories get a date format if the template has none. Number formats from the template, such as
 `0%` or `#,##0.00`, are kept and also applied in the embedded workbook.
+
+### Pictures
+
+```python
+prs.shape("Logo").replace_image("customer-logo.png", fit="contain")
+```
+
+`fit="stretch"` (default) fills the frame, `"contain"` keeps the image's
+aspect ratio inside the old frame, `"cover"` crops it to fill the frame. If
+another slide uses the same image, it keeps the old one.
+
+### Notes, hidden slides, placeholders
+
+```python
+slide.notes = "Talking points\nfor the presenter"
+slide.hidden = True  # stays in the file, skipped in the show
+title = slide.placeholder("title")  # or placeholder(idx=1)
+```
+
+`replace_text` also reaches speaker notes (pass `notes=False` to skip
+them) and chart titles. A `\n` in a replacement value starts a new
+paragraph, `\v` a new line.
 
 ### Tables
 

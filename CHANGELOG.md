@@ -28,6 +28,19 @@ contain breaking changes.
   categories get a date format when the template has none.
 - Filtered (hidden) chart series are removed when data is replaced, since
   they would refer to cells of the old workbook.
+- `shape.replace_image()` with stretch/contain/cover fitting.
+- `slide.notes`, `slide.hidden`, `slide.placeholder(type, idx=...)`.
+- `replace_text` covers chart titles and speaker notes; `\n` and `\v` in
+  replacement values become paragraphs and line breaks.
+
+### Changed
+
+- `slide.shape(name)` raises `InvalidArgumentError` when several shapes
+  share the name (it used to return the first).
+- Rust: the XML and package layers are no longer public;
+  `Presentation::package()` is replaced by `part_names()`. Chart and shape
+  data types are `#[non_exhaustive]` and have constructors.
+- Rust: `replace_text` and `replace_text_on_slide` take a `notes` flag.
 
 ### Fixed
 

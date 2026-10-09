@@ -21,6 +21,10 @@ afterslides.
 | Clear chart series | `chart.ChartData.Series.Clear()` | implicit in `replace_data` |
 | Add series | `Series.Add(...)` + `DataPoints.AddDataPointForBarSeries(...)` | pass more series to `replace_data` |
 | Chart title | `chart.ChartTitle.AddTextFrameForOverriding(...)` | `chart.title = ...` |
+| Replace picture | `picture.PictureFormat.Picture.Image = ...` | `shape.replace_image(path_or_bytes)` |
+| Placeholder by type | loop, compare `Placeholder.Type` | `slide.placeholder("title")` |
+| Speaker notes | `slide.NotesSlideManager.NotesSlide.NotesTextFrame.Text` | `slide.notes = ...` |
+| Hide slide | `slide.Hidden = true` | `slide.hidden = True` |
 | Remove shape | `slide.Shapes.Remove(shape)` | `shape.delete()` |
 | Remove slide | `pres.Slides.Remove(slide)` | `slide.delete()` |
 | Clone slide | `pres.Slides.InsertClone(i, slide)` | `slide.duplicate(position=i)` |
