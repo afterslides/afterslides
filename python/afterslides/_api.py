@@ -35,13 +35,16 @@ def _excel_serial(value: _dt.date) -> float:
     return delta.days + delta.seconds / 86400 + delta.microseconds / 86_400_000_000
 
 
-def _categories(values: Iterable[Any]) -> list[str] | list[float]:
+def _categories(values: Iterable[Any]) -> tuple[list[str] | list[float] | list[list[str]], bool]:
+    """Categories in the form the native layer takes, plus whether they are dates."""
     values = list(values)
     if values and all(isinstance(v, (_dt.date, _dt.datetime)) for v in values):
-        return [_excel_serial(v) for v in values]
+        return [_excel_serial(v) for v in values], True
     if values and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values):
-        return [float(v) for v in values]
-    return ["" if v is None else str(v) for v in values]
+        return [float(v) for v in values], False
+    if values and all(isinstance(v, (tuple, list)) for v in values):
+        return [[_text(level) for level in v] for v in values], False
+    return [_text(v) for v in values], False
 
 
 def _text(value: Any) -> str:
@@ -54,10 +57,18 @@ def _replacements(mapping: Mapping[str, Any]) -> list[tuple[str, str]]:
 
 @dataclass
 class Series:
-    """A named series of a category chart; one value per category."""
+    """A named series of a category chart; one value per category.
+
+    ``plot`` is only needed for combo charts: the index (into
+    :attr:`Chart.types`) of the plot the series belongs to, for example 0 for
+    the columns and 1 for the line. ``number_format`` overrides the
+    template's number format for the values (e.g. ``"0.0%"``).
+    """
 
     name: str
     values: list[float | None] = field(default_factory=list)
+    plot: int | None = None
+    number_format: str | None = field(default=None, compare=False)
 
 
 @dataclass
@@ -495,13 +506,23 @@ class Chart:
         return any(t in ("scatterChart", "bubbleChart") for t in self.types)
 
     @property
-    def categories(self) -> list[str] | list[float]:
-        return self._n.chart_data(*self._args)[0]
+    def categories(self) -> list[str] | list[float] | list[tuple[str, ...]]:
+        """Category labels; numbers for numeric and date axes (dates as Excel
+        serial numbers); tuples (outermost level first) for multi-level
+        categories."""
+        categories, kind, _ = self._n.chart_data(*self._args)
+        if kind == "levels":
+            return [tuple(levels) for levels in categories]  # type: ignore[arg-type]
+        return categories  # type: ignore[return-value]
 
     @property
     def series(self) -> list[Series]:
+        """Series in legend order. ``plot`` is set for combo charts only."""
         _, _, series = self._n.chart_data(*self._args)
-        return [Series(name, list(values)) for name, values in series]
+        return [
+            Series(name, list(values), plot, number_format)
+            for name, values, plot, number_format in series
+        ]
 
     @property
     def xy_series(self) -> list[XySeries]:
@@ -530,11 +551,16 @@ class Chart:
         :class:`Series`. Alternatively pass a pandas DataFrame as the only
         argument: its index becomes the categories, each column a series.
 
-        Categories may be strings, numbers or dates. Values may be numbers or
-        ``None`` (a gap). If there are more series than in the template, the
+        Categories may be strings, numbers, dates, or tuples for multi-level
+        categories (``("2026", "Q1")``, outermost first). Values may be numbers
+        or ``None`` (a gap). If there are more series than in the template, the
         extra ones copy the formatting of the template's last series; surplus
         template series are removed. The embedded workbook is rewritten too,
         so "Edit Data" in PowerPoint shows the new numbers.
+
+        In combo charts every plot keeps its own formatting: set
+        :attr:`Series.plot` to say which plot each series belongs to. Without
+        it, the number of series must match the template.
         """
         if series is None and hasattr(categories, "columns") and hasattr(categories, "index"):
             frame = categories
@@ -543,13 +569,18 @@ class Chart:
         if categories is None or series is None:
             raise InvalidArgumentError("replace_data needs categories and series")
         if isinstance(series, Mapping):
-            items = [(str(name), values) for name, values in series.items()]
+            items = [Series(str(name), list(values)) for name, values in series.items()]
         else:
-            items = [(s.name, s.values) for s in series]
+            items = list(series)
+        native_categories, dates = _categories(categories)
         self._n.set_chart_data(
             *self._args,
-            _categories(categories),
-            [(name, [_to_float(v) for v in values]) for name, values in items],
+            native_categories,
+            [
+                (s.name, [_to_float(v) for v in s.values], s.plot, s.number_format)
+                for s in items
+            ],
+            dates,
         )
 
     def replace_xy_data(self, series: Sequence[XySeries]) -> None:

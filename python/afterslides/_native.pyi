@@ -57,13 +57,18 @@ class Presentation:
     def chart_types(self, slide: int, id: int) -> list[str]: ...
     def chart_data(
         self, slide: int, id: int
-    ) -> tuple[list[str] | list[float], bool, list[tuple[str, list[float | None]]]]: ...
+    ) -> tuple[
+        list[str] | list[float] | list[list[str]],
+        str,
+        list[tuple[str, list[float | None], int | None, str | None]],
+    ]: ...
     def set_chart_data(
         self,
         slide: int,
         id: int,
-        categories: list[str] | list[float],
-        series: list[tuple[str, list[float | None]]],
+        categories: list[str] | list[float] | list[list[str]],
+        series: list[tuple[str, list[float | None], int | None, str | None]],
+        dates: bool = False,
     ) -> None: ...
     def chart_xy_data(
         self, slide: int, id: int

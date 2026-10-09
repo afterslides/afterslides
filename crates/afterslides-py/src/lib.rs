@@ -98,7 +98,8 @@ impl From<ShapeInfo> for PyShapeInfo {
     }
 }
 
-type PySeries = (String, Vec<Option<f64>>);
+/// `(name, values, plot, number_format)`
+type PySeries = (String, Vec<Option<f64>>, Option<usize>, Option<String>);
 type PyXySeries = (
     String,
     Vec<Option<f64>>,
@@ -110,6 +111,7 @@ type PyXySeries = (
 enum PyCategories {
     Numbers(Vec<f64>),
     Labels(Vec<String>),
+    Levels(Vec<Vec<String>>),
 }
 
 #[pyclass(module = "afterslides._native", name = "Presentation")]
@@ -277,44 +279,58 @@ impl PyPresentation {
         self.inner.chart_types(shape(slide, id)).py()
     }
 
-    /// Returns `(categories, numeric, [(name, values)])`.
+    /// Returns `(categories, kind, series)` where kind is `labels`,
+    /// `numbers` or `levels`.
     fn chart_data<'py>(
         &self,
         py: Python<'py>,
         slide: u32,
         id: u32,
-    ) -> PyResult<(Bound<'py, PyAny>, bool, Vec<PySeries>)> {
+    ) -> PyResult<(Bound<'py, PyAny>, &'static str, Vec<PySeries>)> {
         let data = self.inner.chart_data(shape(slide, id)).py()?;
-        let (categories, numeric) = match data.categories {
-            Categories::Labels(v) => (v.into_pyobject(py)?.into_any(), false),
-            Categories::Numbers(v) => (v.into_pyobject(py)?.into_any(), true),
+        let (categories, kind) = match data.categories {
+            Categories::Labels(v) => (v.into_pyobject(py)?.into_any(), "labels"),
+            Categories::Numbers(v) | Categories::Dates(v) => {
+                (v.into_pyobject(py)?.into_any(), "numbers")
+            }
+            Categories::Levels(v) => (v.into_pyobject(py)?.into_any(), "levels"),
+            _ => (Vec::<String>::new().into_pyobject(py)?.into_any(), "labels"),
         };
         let series = data
             .series
             .into_iter()
-            .map(|s| (s.name, s.values))
+            .map(|s| (s.name, s.values, s.plot, s.number_format))
             .collect();
-        Ok((categories, numeric, series))
+        Ok((categories, kind, series))
     }
 
+    #[pyo3(signature = (slide, id, categories, series, dates=false))]
     fn set_chart_data(
         &mut self,
         slide: u32,
         id: u32,
         categories: PyCategories,
         series: Vec<PySeries>,
+        dates: bool,
     ) -> PyResult<()> {
-        let data = ChartData {
-            categories: match categories {
-                PyCategories::Labels(v) => Categories::Labels(v),
-                PyCategories::Numbers(v) => Categories::Numbers(v),
-            },
-            series: series
-                .into_iter()
-                .map(|(name, values)| Series { name, values })
-                .collect(),
+        let categories = match categories {
+            PyCategories::Labels(v) => Categories::Labels(v),
+            PyCategories::Numbers(v) if dates => Categories::Dates(v),
+            PyCategories::Numbers(v) => Categories::Numbers(v),
+            PyCategories::Levels(v) => Categories::Levels(v),
         };
-        self.inner.set_chart_data(shape(slide, id), &data).py()
+        let series = series
+            .into_iter()
+            .map(|(name, values, plot, format)| {
+                let mut s = Series::new(name, values);
+                s.plot = plot;
+                s.number_format = format;
+                s
+            })
+            .collect();
+        self.inner
+            .set_chart_data(shape(slide, id), &ChartData::new(categories, series))
+            .py()
     }
 
     fn chart_xy_data(&self, slide: u32, id: u32) -> PyResult<Vec<PyXySeries>> {
@@ -330,7 +346,13 @@ impl PyPresentation {
     fn set_chart_xy_data(&mut self, slide: u32, id: u32, series: Vec<PyXySeries>) -> PyResult<()> {
         let series: Vec<XySeries> = series
             .into_iter()
-            .map(|(name, x, y, sizes)| XySeries { name, x, y, sizes })
+            .map(|(name, x, y, sizes)| {
+                let s = XySeries::new(name, x, y);
+                match sizes {
+                    Some(sizes) => s.with_sizes(sizes),
+                    None => s,
+                }
+            })
             .collect();
         self.inner.set_chart_xy_data(shape(slide, id), &series).py()
     }
