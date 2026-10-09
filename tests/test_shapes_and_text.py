@@ -114,3 +114,11 @@ def test_stale_handle_raises(prs: Presentation) -> None:
     shape.delete()
     with pytest.raises(NotFoundError):
         shape.text = "gone"
+
+
+def test_replacement_values_with_line_breaks(prs: Presentation) -> None:
+    note = prs.slides[1].shape("Note")
+    note.replace_text({"{{source}}": "ERP\nFinance\vteam"})
+    assert reopen(prs).slides[1].shape("Note").text == "Source: ERP\nFinance\vteam"
+    paragraphs = as_python_pptx(prs).slides[1].shapes[2].text_frame.paragraphs
+    assert [p.text for p in paragraphs] == ["Source: ERP", "Finance\vteam"]

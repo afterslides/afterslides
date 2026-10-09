@@ -128,21 +128,109 @@ fn make_run(like: &Element, rpr: Option<&Element>, text: &str) -> Element {
 ///
 /// Returns the number of replacements made.
 pub fn replace_in(root: &mut Element, replacements: &[(&str, &str)]) -> usize {
-    let replacements: Vec<(&str, &str)> = replacements
+    let normalized: Vec<(&str, String)> = replacements
         .iter()
-        .copied()
         .filter(|(from, _)| !from.is_empty())
+        .map(|(from, to)| (*from, to.replace("\r\n", "\n")))
         .collect();
-    if replacements.is_empty() {
+    if normalized.is_empty() {
         return 0;
     }
+    let replacements: Vec<(&str, &str)> =
+        normalized.iter().map(|(f, t)| (*f, t.as_str())).collect();
+    let breaks = replacements
+        .iter()
+        .any(|(_, to)| to.contains(PARAGRAPH_SEP) || to.contains(LINE_BREAK));
     let mut count = 0;
+    // Paragraphs are handled from their parent, which lets a replacement
+    // containing "\n" split one paragraph into several.
     root.walk_mut(&mut |el| {
-        if el.is(ns::A, "p") {
-            count += replace_in_paragraph(el, &replacements);
+        let mut i = 0;
+        while i < el.children.len() {
+            let Node::Element(p) = &mut el.children[i] else {
+                i += 1;
+                continue;
+            };
+            if !p.is(ns::A, "p") {
+                i += 1;
+                continue;
+            }
+            let hits = replace_in_paragraph(p, &replacements);
+            count += hits;
+            if hits > 0 && breaks {
+                let parts = split_paragraph(p);
+                let n = parts.len();
+                el.children
+                    .splice(i..=i, parts.into_iter().map(Node::Element));
+                i += n;
+            } else {
+                i += 1;
+            }
         }
     });
     count
+}
+
+/// Turns `\v` inside runs into `a:br` and splits the paragraph at `\n`.
+/// Every new paragraph keeps the paragraph properties; runs keep theirs.
+fn split_paragraph(p: &Element) -> Vec<Element> {
+    let shell = |p: &Element| Element {
+        children: Vec::new(),
+        ..p.clone()
+    };
+    let p_pr = p.child(ns::A, "pPr").cloned();
+    let end = p.child(ns::A, "endParaRPr").cloned();
+    let start_paragraph = || {
+        let mut new = shell(p);
+        if let Some(ppr) = &p_pr {
+            new.children.push(Node::Element(ppr.clone()));
+        }
+        new
+    };
+
+    let mut out = Vec::new();
+    let mut current = start_paragraph();
+    for child in &p.children {
+        match child {
+            Node::Element(e) if e.is(ns::A, "pPr") || e.is(ns::A, "endParaRPr") => {}
+            Node::Element(r) if r.is(ns::A, "r") => {
+                let text = r.child(ns::A, "t").map(Element::text).unwrap_or_default();
+                if !text.contains(PARAGRAPH_SEP) && !text.contains(LINE_BREAK) {
+                    current.children.push(child.clone());
+                    continue;
+                }
+                let rpr = r.child(ns::A, "rPr");
+                for (pi, para) in text.split(PARAGRAPH_SEP).enumerate() {
+                    if pi > 0 {
+                        if let Some(end) = &end {
+                            current.children.push(Node::Element(end.clone()));
+                        }
+                        out.push(std::mem::replace(&mut current, start_paragraph()));
+                    }
+                    for (li, line) in para.split(LINE_BREAK).enumerate() {
+                        if li > 0 {
+                            let mut br = Element::new_like(r, "br");
+                            if let Some(rpr) = rpr {
+                                br.children.push(Node::Element(rpr.clone()));
+                            }
+                            current.children.push(Node::Element(br));
+                        }
+                        if !line.is_empty() {
+                            let mut run = r.clone();
+                            set_run_text(&mut run, line);
+                            current.children.push(Node::Element(run));
+                        }
+                    }
+                }
+            }
+            other => current.children.push(other.clone()),
+        }
+    }
+    if let Some(end) = end {
+        current.children.push(Node::Element(end));
+    }
+    out.push(current);
+    out
 }
 
 fn replace_in_paragraph(p: &mut Element, replacements: &[(&str, &str)]) -> usize {
@@ -324,6 +412,22 @@ mod tests {
         // The replacement keeps the bold formatting of the run it started in.
         let xml = String::from_utf8(doc.to_bytes()).unwrap();
         assert!(xml.contains(r#"<a:rPr lang="en-US" b="1"/><a:t>Revenue 2026</a:t>"#));
+    }
+
+    #[test]
+    fn replacement_with_newlines_splits_paragraphs() {
+        let mut doc = Document::parse(BODY.as_bytes()).unwrap();
+        let n = replace_in(&mut doc.root, &[("{{year}}", "2026\nsecond\u{b}broken")]);
+        assert_eq!(n, 1);
+        assert_eq!(
+            get_text(&doc.root),
+            "Revenue 2026\nsecond\u{b}broken\u{b}second line\npara 2"
+        );
+        let xml = String::from_utf8(doc.to_bytes()).unwrap();
+        // Both halves keep the centered paragraph and the bold run.
+        assert_eq!(xml.matches(r#"<a:pPr algn="ctr"/>"#).count(), 2);
+        assert!(xml.contains(r#"<a:rPr lang="en-US" b="1"/><a:t>second</a:t>"#));
+        assert!(!xml.contains('\u{b}'));
     }
 
     #[test]
