@@ -153,7 +153,7 @@ In **combo charts** (say, columns plus a line) each series belongs to a plot.
 the formatting of its own template series:
 
 ```python
-chart.types               # ['barChart', 'lineChart']
+chart.types  # ['barChart', 'lineChart']
 chart.replace_data(
     ["Q1", "Q2", "Q3"],
     [

@@ -576,10 +576,7 @@ class Chart:
         self._n.set_chart_data(
             *self._args,
             native_categories,
-            [
-                (s.name, [_to_float(v) for v in s.values], s.plot, s.number_format)
-                for s in items
-            ],
+            [(s.name, [_to_float(v) for v in s.values], s.plot, s.number_format) for s in items],
             dates,
         )
 
