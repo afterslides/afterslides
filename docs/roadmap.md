@@ -20,10 +20,17 @@ Open an issue if you need something that is further down.
 
 - Settle shape-handle semantics and text conventions (`\n`/`\v` everywhere,
   including `replace_text`).
-- `#[non_exhaustive]` on public Rust data types; keep the XML and package
-  layers internal.
+- Keep the XML and package layers internal (chart data types are already
+  `#[non_exhaustive]`; shape and slide types still need it).
 - Placeholder text in notes, layouts and chart titles; hide slides; replace
   pictures; find placeholders by type/index.
+
+## M6: releases
+
+- Wheels and sdist on tags, PyPI and crates.io publishing.
+- Faster saves for large templates (copy untouched zip entries without
+  recompressing), benchmarks on large decks.
+- `cargo deny`/audit in CI, fuzzing the XML and package readers.
 
 ## Later
 
@@ -33,13 +40,6 @@ Open an issue if you need something that is further down.
   consistent is a lot of risk for little visible benefit.
 - Data labels from cell ranges (`c15:datalabelsRange`), custom error bars.
 - Adding a plot to, or removing one from, a combo chart.
-
-## M6: releases
-
-- Wheels and sdist on tags, PyPI and crates.io publishing.
-- Faster saves for large templates (copy untouched zip entries without
-  recompressing), benchmarks on large decks.
-- `cargo deny`/audit in CI, fuzzing the XML and package readers.
 
 ## Not planned
 
