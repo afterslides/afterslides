@@ -2,13 +2,13 @@
 
 pub mod chart;
 pub mod error;
-pub mod opc;
+mod opc;
 pub mod presentation;
 pub mod shape;
 mod slide;
 pub mod table;
-pub mod text;
-pub mod xml;
+mod text;
+mod xml;
 
 pub use chart::{Categories, ChartData, Series, XySeries};
 pub use error::{Error, Result};

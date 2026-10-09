@@ -337,18 +337,6 @@ impl Document {
         })
     }
 
-    /// Makes sure `prefix` is bound to `uri` on the root element.
-    pub fn declare_ns(&mut self, prefix: &str, uri: &str) {
-        let name = format!("xmlns:{prefix}");
-        if !self.root.attrs.iter().any(|a| a.name == name) {
-            self.root.attrs.push(Attr {
-                name,
-                ns: Some(Arc::from(ns::XMLNS)),
-                value: uri.to_string(),
-            });
-        }
-    }
-
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = String::with_capacity(4096);
         match &self.decl {

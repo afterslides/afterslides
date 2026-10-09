@@ -128,13 +128,9 @@ impl Presentation {
         self.pkg.write(writer)
     }
 
-    /// Low-level access to the underlying package.
-    pub fn package(&self) -> &Package {
-        &self.pkg
-    }
-
-    pub fn package_mut(&mut self) -> &mut Package {
-        &mut self.pkg
+    /// Names of all parts in the package, e.g. `/ppt/slides/slide1.xml`.
+    pub fn part_names(&self) -> Vec<String> {
+        self.pkg.part_names().map(str::to_string).collect()
     }
 
     // ---- slides -----------------------------------------------------------

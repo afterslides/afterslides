@@ -31,6 +31,7 @@ pub enum Error {
 
 /// What a [`Error::NotFound`] was looking for.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Target {
     Part(String),
     Slide(u32),

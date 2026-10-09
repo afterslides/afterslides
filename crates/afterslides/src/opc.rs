@@ -5,7 +5,7 @@
 //! were never touched are written back byte for byte.
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
-use std::io::{Cursor, Read, Seek, Write};
+use std::io::{Read, Seek, Write};
 use std::sync::OnceLock;
 
 use zip::write::SimpleFileOptions;
@@ -102,14 +102,6 @@ impl Relationships {
         let idx = self.rels.iter().position(|r| r.id == id)?;
         self.dirty = true;
         Some(self.rels.remove(idx))
-    }
-
-    pub fn retain(&mut self, mut keep: impl FnMut(&Relationship) -> bool) {
-        let before = self.rels.len();
-        self.rels.retain(|r| keep(r));
-        if self.rels.len() != before {
-            self.dirty = true;
-        }
     }
 
     /// Adds a relationship with a fresh id and returns that id.
@@ -389,10 +381,6 @@ impl Package {
             root.children.insert(at, Node::Element(default));
             self.content_types_raw = None;
         }
-    }
-
-    pub fn to_bytes(&mut self) -> Result<Vec<u8>> {
-        Ok(self.write(Cursor::new(Vec::new()))?.into_inner())
     }
 
     // ---- parts ------------------------------------------------------------

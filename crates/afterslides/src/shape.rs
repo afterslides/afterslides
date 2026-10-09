@@ -14,6 +14,7 @@ const URI_DIAGRAM: &str = "http://schemas.openxmlformats.org/drawingml/2006/diag
 const URI_OLE: &str = "http://schemas.openxmlformats.org/presentationml/2006/ole";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ShapeKind {
     /// `p:sp`: rectangles, text boxes, placeholders and all other auto shapes.
     Shape,
@@ -49,6 +50,7 @@ impl ShapeKind {
 
 /// Placeholder info from `p:nvPr/p:ph`.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Placeholder {
     /// `title`, `body`, `ctrTitle`, `pic`, ...; `body` when not given, as per the spec.
     pub kind: String,
@@ -57,6 +59,7 @@ pub struct Placeholder {
 
 /// A snapshot of a shape's identifying properties.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ShapeInfo {
     pub shape: ShapeRef,
     pub name: String,

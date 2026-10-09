@@ -19,7 +19,7 @@ fn shape(prs: &Presentation, slide: usize, name: &str) -> ShapeRef {
 }
 
 fn part_names(prs: &Presentation) -> Vec<String> {
-    prs.package().part_names().map(str::to_string).collect()
+    prs.part_names()
 }
 
 #[test]
