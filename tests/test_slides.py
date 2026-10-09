@@ -92,3 +92,24 @@ def test_move_slide(prs: Presentation) -> None:
     assert flat == slide_ids(prs)
     with pytest.raises(InvalidArgumentError):
         last.move_to(7)
+
+
+def test_hide_slide(prs: Presentation) -> None:
+    slide = prs.slides[3]
+    assert not slide.hidden
+    slide.hidden = True
+    assert reopen(prs).slides[3].hidden
+    xml = zip_entries(prs)["ppt/slides/slide4.xml"].decode()
+    assert '<p:sld show="0"' in xml or ' show="0"' in xml.split(">", 2)[1]
+    assert as_python_pptx(prs).slides[3]._element.get("show") == "0"
+    slide.hidden = False
+    assert not reopen(prs).slides[3].hidden
+
+
+def test_placeholders(prs: Presentation) -> None:
+    slide = prs.slides[0]
+    assert [p.placeholder_type for p in slide.placeholders] == ["ctrTitle", "subTitle"]
+    assert slide.placeholder("ctrTitle").text == "{{title}}"
+    assert slide.placeholder(idx=1).placeholder_type == "subTitle"
+    with pytest.raises(NotFoundError):
+        slide.placeholder("pic")

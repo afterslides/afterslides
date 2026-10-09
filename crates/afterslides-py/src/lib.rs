@@ -196,6 +196,14 @@ impl PyPresentation {
         .py()
     }
 
+    fn slide_hidden(&self, slide: u32) -> PyResult<bool> {
+        self.inner.slide_hidden(SlideId(slide)).py()
+    }
+
+    fn set_slide_hidden(&mut self, slide: u32, hidden: bool) -> PyResult<()> {
+        self.inner.set_slide_hidden(SlideId(slide), hidden).py()
+    }
+
     fn slide_notes(&self, slide: u32) -> PyResult<String> {
         self.inner.slide_notes(SlideId(slide)).py()
     }

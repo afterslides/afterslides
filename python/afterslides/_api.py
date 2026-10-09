@@ -269,6 +269,39 @@ class Slide:
         return self._n.replace_text(_replacements(replacements), self.id, notes=notes)
 
     @property
+    def hidden(self) -> bool:
+        """Hidden slides stay in the file but are skipped in slide shows."""
+        return self._n.slide_hidden(self.id)
+
+    @hidden.setter
+    def hidden(self, value: bool) -> None:
+        self._n.set_slide_hidden(self.id, bool(value))
+
+    @property
+    def placeholders(self) -> list[Shape]:
+        """Shapes that fill a placeholder of the slide layout."""
+        return [s for s in self.shapes if s.is_placeholder]
+
+    def placeholder(self, type: str | None = None, *, idx: int | None = None) -> Shape:
+        """The placeholder with the given type (``title``, ``body``,
+        ``ctrTitle``, ``subTitle``, ``pic``, ``chart``, ...) and/or index.
+
+        Placeholders without an explicit type are body placeholders, as in
+        PowerPoint.
+        """
+        if type is None and idx is None:
+            raise InvalidArgumentError("give a placeholder type, an index or both")
+        found = [
+            s
+            for s in self.placeholders
+            if (type is None or s.placeholder_type == type)
+            and (idx is None or s.placeholder_idx == idx)
+        ]
+        if not found:
+            raise NotFoundError(f"no placeholder type={type!r} idx={idx!r} on slide {self.index}")
+        return found[0]
+
+    @property
     def notes(self) -> str:
         """Speaker notes; empty if the slide has none."""
         return self._n.slide_notes(self.id)
@@ -348,7 +381,13 @@ class Shape:
 
     @property
     def placeholder_type(self) -> str | None:
+        """Placeholder type (``title``, ``body``, ...), or None if this shape
+        is not a placeholder."""
         return self._info.placeholder_type
+
+    @property
+    def placeholder_idx(self) -> int | None:
+        return self._info.placeholder_idx
 
     @property
     def hidden(self) -> bool:

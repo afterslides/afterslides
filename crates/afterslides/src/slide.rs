@@ -290,6 +290,27 @@ impl Presentation {
         Ok(SlideId(new_id))
     }
 
+    /// Whether the slide is hidden in slide shows (`show="0"`).
+    pub fn slide_hidden(&self, slide: SlideId) -> Result<bool> {
+        Ok(matches!(
+            self.slide_root(slide)?.attr("show"),
+            Some("0" | "false")
+        ))
+    }
+
+    pub fn set_slide_hidden(&mut self, slide: SlideId, hidden: bool) -> Result<()> {
+        if self.slide_hidden(slide)? == hidden {
+            return Ok(());
+        }
+        let root = self.slide_root_mut(slide)?;
+        if hidden {
+            root.set_attr("show", "0");
+        } else {
+            root.remove_attr("show");
+        }
+        Ok(())
+    }
+
     /// Moves a slide to a new position (0-based, counted after removal).
     pub fn move_slide(&mut self, slide: SlideId, position: usize) -> Result<()> {
         let count = self.slide_count()?;
