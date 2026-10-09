@@ -255,11 +255,20 @@ class Slide:
         ]
 
     def shape(self, name: str) -> Shape:
-        """The first shape with this name (as shown in PowerPoint's selection pane)."""
-        for s in self.shapes:
-            if s.name == name:
-                return s
-        raise NotFoundError(f"no shape named {name!r} on slide {self.index}")
+        """The shape with this name (as shown in PowerPoint's selection pane).
+
+        Raises :class:`NotFoundError` if there is none and
+        :class:`InvalidArgumentError` if several shapes share the name; use
+        :meth:`find_shapes` then.
+        """
+        found = [s for s in self.shapes if s.name == name]
+        if not found:
+            raise NotFoundError(f"no shape named {name!r} on slide {self.index}")
+        if len(found) > 1:
+            raise InvalidArgumentError(
+                f"{len(found)} shapes are named {name!r} on slide {self.index}"
+            )
+        return found[0]
 
     def __contains__(self, name: object) -> bool:
         return any(s.name == name for s in self.shapes)
@@ -340,7 +349,11 @@ class Slide:
 
 
 class Shape:
-    """A shape on a slide: text box, placeholder, picture, table, chart, group..."""
+    """A shape on a slide: text box, placeholder, picture, table, chart, group...
+
+    A handle: identifying properties (name, kind, placeholder) are read once;
+    properties edits can change (frame, text, hidden) are read live.
+    """
 
     __slots__ = ("_info", "slide")
 
@@ -389,13 +402,16 @@ class Shape:
     def placeholder_idx(self) -> int | None:
         return self._info.placeholder_idx
 
+    def _live(self) -> _native.ShapeInfo:
+        return self._n.shape_info(self.slide.id, self.id)
+
     @property
     def hidden(self) -> bool:
-        return bool(self._info.hidden)
+        return bool(self._live().hidden)
 
     @property
     def has_text_frame(self) -> bool:
-        return bool(self._info.has_text)
+        return bool(self._live().has_text)
 
     @property
     def is_chart(self) -> bool:
@@ -415,7 +431,7 @@ class Shape:
     @property
     def frame(self) -> tuple[int, int, int, int] | None:
         """``(left, top, width, height)`` in EMU, if the shape has its own position."""
-        return self._info.frame
+        return self._live().frame
 
     @property
     def text(self) -> str:

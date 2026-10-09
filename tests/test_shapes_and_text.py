@@ -143,3 +143,20 @@ def test_slide_notes(prs: Presentation) -> None:
         "New notes on a slide that had none"
     )
     assert prs.slides[2].notes == ""
+
+
+def test_shape_handles_see_later_edits(prs: Presentation) -> None:
+    table = prs.shape("Top Customers")
+    before = table.frame
+    table.table.fill([["x"]] * 8)
+    assert table.frame != before  # the frame grew with the rows
+
+
+def test_slide_shape_lookup_rejects_ambiguous_names(prs: Presentation) -> None:
+    prs.slides[1].shape("Note").delete()
+    copy = prs.slides[5].duplicate()
+    copy.move_to(1)
+    # Two groups named "Card" are on different slides: fine per slide.
+    assert copy.shape("Card").kind == "group"
+    with pytest.raises(InvalidArgumentError):
+        prs.shape("Card")
