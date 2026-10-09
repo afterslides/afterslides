@@ -51,7 +51,7 @@ def test_replace_text_across_runs_keeps_formatting(prs: Presentation) -> None:
     hits = prs.replace_text(
         {"{{title}}": "Q3", "{{customer}}": "Acme", "{{period}}": 2026, "{{name}}": "Ada"}
     )
-    assert hits == 4
+    assert hits == 5  # four on slides, one in the speaker notes
     check = as_python_pptx(prs)
     subtitle = check.slides[0].placeholders[1].text_frame.paragraphs[0]
     assert subtitle.text == "Report for Acme — 2026"
@@ -70,7 +70,9 @@ def test_replace_text_leaves_untouched_slides_alone(prs: Presentation) -> None:
 
 
 def test_replace_text_scoped_to_slide_and_shape(prs: Presentation) -> None:
-    assert prs.slides[1].replace_text({"{{title}}": "x"}) == 0  # only in the notes
+    assert prs.slides[1].replace_text({"{{title}}": "x"}, notes=False) == 0
+    assert prs.slides[1].replace_text({"{{title}}": "x"}) == 1  # in the speaker notes
+    assert prs.slides[1].notes == "Speaker notes for x"
     note = prs.slides[1].shape("Note")
     assert note.replace_text({"{{source}}": "ERP"}) == 1
     assert note.text == "Source: ERP"
@@ -122,3 +124,22 @@ def test_replacement_values_with_line_breaks(prs: Presentation) -> None:
     assert reopen(prs).slides[1].shape("Note").text == "Source: ERP\nFinance\vteam"
     paragraphs = as_python_pptx(prs).slides[1].shapes[2].text_frame.paragraphs
     assert [p.text for p in paragraphs] == ["Source: ERP", "Finance\vteam"]
+
+
+def test_replace_text_reaches_chart_titles(prs: Presentation) -> None:
+    prs.shape("Revenue Chart").chart.title = "Revenue {{year}}"
+    assert prs.replace_text({"{{year}}": 2026}) == 1
+    assert reopen(prs).shape("Revenue Chart").chart.title == "Revenue 2026"
+
+
+def test_slide_notes(prs: Presentation) -> None:
+    slide = prs.slides[1]
+    assert slide.notes == "Speaker notes for {{title}}"
+    slide.notes = "First point\nSecond point"
+    prs.slides[0].notes = "New notes on a slide that had none"
+    check = as_python_pptx(prs)
+    assert check.slides[1].notes_slide.notes_text_frame.text == "First point\nSecond point"
+    assert check.slides[0].notes_slide.notes_text_frame.text == (
+        "New notes on a slide that had none"
+    )
+    assert prs.slides[2].notes == ""

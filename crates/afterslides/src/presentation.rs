@@ -218,22 +218,41 @@ impl Presentation {
 
     /// Replaces placeholder text on every slide. Returns the number of
     /// replacements made.
-    pub fn replace_text(&mut self, replacements: &[(&str, &str)]) -> Result<usize> {
+    pub fn replace_text(&mut self, replacements: &[(&str, &str)], notes: bool) -> Result<usize> {
         let mut count = 0;
         for slide in self.slides()? {
-            count += self.replace_text_on_slide(slide, replacements)?;
+            count += self.replace_text_on_slide(slide, replacements, notes)?;
         }
         Ok(count)
     }
 
+    /// Replaces placeholder text on one slide, including the text of its
+    /// charts (titles, axis titles) and, with `notes`, its speaker notes.
     pub fn replace_text_on_slide(
         &mut self,
         slide: SlideId,
         replacements: &[(&str, &str)],
+        notes: bool,
     ) -> Result<usize> {
         let part = self.slide_part(slide)?;
-        // Check read-only first so untouched slides stay byte-identical.
-        let all_text = self.pkg.xml(&part)?.root.text();
+        let mut parts = vec![part.clone()];
+        for (rel, target) in self.pkg.targets(&part) {
+            let wanted =
+                rel.rel_type == rel_type::CHART || (notes && rel.rel_type == rel_type::NOTES_SLIDE);
+            if wanted && self.pkg.has_part(&target) {
+                parts.push(target);
+            }
+        }
+        let mut count = 0;
+        for part in parts {
+            count += self.replace_text_in_part(&part, replacements)?;
+        }
+        Ok(count)
+    }
+
+    fn replace_text_in_part(&mut self, part: &str, replacements: &[(&str, &str)]) -> Result<usize> {
+        // Check read-only first so untouched parts stay byte-identical.
+        let all_text = self.pkg.xml(part)?.root.text();
         if !replacements
             .iter()
             .any(|(from, _)| !from.is_empty() && all_text.contains(from))
@@ -241,7 +260,7 @@ impl Presentation {
             return Ok(0);
         }
         Ok(crate::text::replace_in(
-            &mut self.pkg.xml_mut(&part)?.root,
+            &mut self.pkg.xml_mut(part)?.root,
             replacements,
         ))
     }

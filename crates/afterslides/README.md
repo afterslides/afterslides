@@ -8,7 +8,7 @@ duplicate or reorder slides, without disturbing anything else in the file.
 use afterslides::{Categories, ChartData, Presentation, Series};
 
 let mut prs = Presentation::open("template.pptx")?;
-prs.replace_text(&[("{{customer}}", "Acme")])?;
+prs.replace_text(&[("{{customer}}", "Acme")], true)?;
 
 let slide = prs.slide_at(1)?;
 let chart = prs.find_shape(slide, "Revenue Chart")?.expect("template has the chart");

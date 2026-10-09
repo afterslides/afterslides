@@ -65,12 +65,15 @@ fn lists_shapes() {
 fn replaces_split_placeholders() {
     let mut prs = open();
     let n = prs
-        .replace_text(&[
-            ("{{title}}", "Q3 Report"),
-            ("{{customer}}", "Acme"),
-            ("{{period}}", "2026"),
-            ("{{name}}", "Ada"),
-        ])
+        .replace_text(
+            &[
+                ("{{title}}", "Q3 Report"),
+                ("{{customer}}", "Acme"),
+                ("{{period}}", "2026"),
+                ("{{name}}", "Ada"),
+            ],
+            false,
+        )
         .unwrap();
     assert_eq!(n, 4);
     let prs = reopen(&mut prs);

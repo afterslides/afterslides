@@ -129,14 +129,17 @@ class Presentation:
         """Width and height of the slides in EMU (914400 per inch)."""
         return self._native.slide_size()
 
-    def replace_text(self, replacements: Mapping[str, Any]) -> int:
+    def replace_text(self, replacements: Mapping[str, Any], *, notes: bool = True) -> int:
         """Replaces placeholder text on all slides; returns the number of hits.
 
-        Values are converted with ``str()``. Placeholders are found even when
-        PowerPoint split them across differently formatted runs; the
-        replacement takes the formatting of the run where the placeholder starts.
+        Covers shapes, tables, chart titles and, unless ``notes=False``,
+        speaker notes. Values are converted with ``str()``; ``\\n`` in a value
+        starts a new paragraph, ``\\v`` a new line. Placeholders are found even
+        when PowerPoint split them across differently formatted runs; the
+        replacement takes the formatting of the run where the placeholder
+        starts.
         """
-        return self._native.replace_text(_replacements(replacements))
+        return self._native.replace_text(_replacements(replacements), notes=notes)
 
     def find_shapes(
         self,
@@ -261,8 +264,18 @@ class Slide:
     def __contains__(self, name: object) -> bool:
         return any(s.name == name for s in self.shapes)
 
-    def replace_text(self, replacements: Mapping[str, Any]) -> int:
-        return self._n.replace_text(_replacements(replacements), self.id)
+    def replace_text(self, replacements: Mapping[str, Any], *, notes: bool = True) -> int:
+        """Like :meth:`Presentation.replace_text`, for this slide only."""
+        return self._n.replace_text(_replacements(replacements), self.id, notes=notes)
+
+    @property
+    def notes(self) -> str:
+        """Speaker notes; empty if the slide has none."""
+        return self._n.slide_notes(self.id)
+
+    @notes.setter
+    def notes(self, value: Any) -> None:
+        self._n.set_slide_notes(self.id, _text(value))
 
     def delete(self) -> None:
         """Removes the slide, its notes and charts. Hyperlinks to it on other

@@ -179,20 +179,29 @@ impl PyPresentation {
         self.inner.move_slide(SlideId(slide), position).py()
     }
 
-    #[pyo3(signature = (replacements, slide=None, shape_id=None))]
+    #[pyo3(signature = (replacements, slide=None, shape_id=None, notes=true))]
     fn replace_text(
         &mut self,
         replacements: Vec<(String, String)>,
         slide: Option<u32>,
         shape_id: Option<u32>,
+        notes: bool,
     ) -> PyResult<usize> {
         let pairs = pairs(&replacements);
         match (slide, shape_id) {
             (Some(s), Some(id)) => self.inner.replace_text_in_shape(shape(s, id), &pairs),
-            (Some(s), None) => self.inner.replace_text_on_slide(SlideId(s), &pairs),
-            _ => self.inner.replace_text(&pairs),
+            (Some(s), None) => self.inner.replace_text_on_slide(SlideId(s), &pairs, notes),
+            _ => self.inner.replace_text(&pairs, notes),
         }
         .py()
+    }
+
+    fn slide_notes(&self, slide: u32) -> PyResult<String> {
+        self.inner.slide_notes(SlideId(slide)).py()
+    }
+
+    fn set_slide_notes(&mut self, slide: u32, notes: &str) -> PyResult<()> {
+        self.inner.set_slide_notes(SlideId(slide), notes).py()
     }
 
     // ---- shapes ------------------------------------------------------------

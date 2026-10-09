@@ -2,6 +2,7 @@
 
 pub mod chart;
 pub mod error;
+mod notes;
 mod opc;
 pub mod presentation;
 pub mod shape;
