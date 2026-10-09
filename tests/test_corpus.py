@@ -13,6 +13,7 @@ any other exception is a bug.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 import zipfile
@@ -20,6 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from test_pictures import png
 
 from afterslides import (
     PackageError,
@@ -165,12 +167,27 @@ def duplicate_then_delete_originals(prs: Presentation) -> None:
         slide.delete()
 
 
+def replace_pictures(prs: Presentation) -> None:
+    fits = ["stretch", "contain", "cover"]
+    for slide in prs.slides:
+        for i, shape in enumerate(slide.shapes):
+            if shape.kind == "picture":
+                shape.replace_image(png(4, 3), fit=fits[i % 3])  # type: ignore[arg-type]
+
+
 def delete_every_other_slide(prs: Presentation) -> None:
     for i, slide in enumerate(list(prs.slides)):
         if i % 2:
             slide.delete()
     if len(prs.slides) > 1:
         prs.slides[-1].move_to(0)
+
+
+def notes_and_hiding(prs: Presentation) -> None:
+    for i, slide in enumerate(prs.slides):
+        slide.hidden = i % 2 == 0
+        with contextlib.suppress(UnsupportedError):  # no notes master in the template
+            slide.notes = f"Notes for slide {i}\nsecond line"
 
 
 OPERATIONS = {
@@ -181,6 +198,8 @@ OPERATIONS = {
     "delete_shapes": delete_every_other_shape,
     "duplicate_slides": duplicate_then_delete_originals,
     "delete_slides": delete_every_other_slide,
+    "pictures": replace_pictures,
+    "notes_and_hiding": notes_and_hiding,
 }
 
 

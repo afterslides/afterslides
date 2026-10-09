@@ -152,6 +152,11 @@ impl Element {
         }
     }
 
+    pub fn remove_attr_ns(&mut self, ns: &str, local: &str) {
+        self.attrs
+            .retain(|a| !(a.ns.as_deref() == Some(ns) && a.local() == local));
+    }
+
     pub fn remove_attr(&mut self, name: &str) {
         self.attrs.retain(|a| !(a.ns.is_none() && a.name == name));
     }

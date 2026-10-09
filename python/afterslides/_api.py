@@ -5,7 +5,7 @@ import math
 import os
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import IO, Any, Union, overload
+from typing import IO, Any, Literal, Union, overload
 
 from afterslides import _native
 from afterslides.errors import InvalidArgumentError, NotFoundError, UnsupportedError
@@ -430,6 +430,29 @@ class Shape:
     def replace_text(self, replacements: Mapping[str, Any]) -> int:
         """Replaces placeholders in this shape (text and table cells)."""
         return self._n.replace_text(_replacements(replacements), self.slide.id, self.id)
+
+    def replace_image(
+        self,
+        image: str | os.PathLike[str] | bytes | IO[bytes],
+        *,
+        fit: Literal["stretch", "contain", "cover"] = "stretch",
+    ) -> None:
+        """Replaces the image of a picture (or of a shape filled with a
+        picture), keeping position, border and effects.
+
+        ``fit`` decides what happens when the aspect ratios differ:
+        ``"stretch"`` fills the frame, ``"contain"`` shrinks the frame to
+        the image (centred), ``"cover"`` crops the image to fill the frame.
+        PNG, JPEG, GIF, BMP, TIFF, EMF and WMF are supported.
+        """
+        if isinstance(image, (str, os.PathLike)):
+            with open(image, "rb") as f:
+                data = f.read()
+        elif isinstance(image, (bytes, bytearray, memoryview)):
+            data = bytes(image)
+        else:
+            data = image.read()
+        self._n.replace_picture(self.slide.id, self.id, data, fit)
 
     def delete(self) -> None:
         """Removes the shape. Charts and images only it used are dropped on save."""

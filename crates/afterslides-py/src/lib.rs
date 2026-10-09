@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use afterslides::{
-    Categories, ChartData, Error, Presentation, Series, ShapeInfo, ShapeRef, SlideId, XySeries,
+    Categories, ChartData, Error, Fit, Presentation, Series, ShapeInfo, ShapeRef, SlideId, XySeries,
 };
 use pyo3::exceptions::PyOSError;
 use pyo3::prelude::*;
@@ -234,6 +234,20 @@ impl PyPresentation {
 
     fn set_shape_text(&mut self, slide: u32, id: u32, text: &str) -> PyResult<()> {
         self.inner.set_shape_text(shape(slide, id), text).py()
+    }
+
+    fn replace_picture(&mut self, slide: u32, id: u32, data: &[u8], fit: &str) -> PyResult<()> {
+        let fit = match fit {
+            "stretch" => Fit::Stretch,
+            "contain" => Fit::Contain,
+            "cover" => Fit::Cover,
+            other => {
+                return Err(to_py(Error::InvalidArgument(format!(
+                    "fit must be \"stretch\", \"contain\" or \"cover\", not {other:?}"
+                ))));
+            }
+        };
+        self.inner.replace_picture(shape(slide, id), data, fit).py()
     }
 
     fn delete_shape(&mut self, slide: u32, id: u32) -> PyResult<()> {

@@ -4,6 +4,7 @@ pub mod chart;
 pub mod error;
 mod notes;
 mod opc;
+pub mod picture;
 pub mod presentation;
 pub mod shape;
 mod slide;
@@ -13,5 +14,6 @@ mod xml;
 
 pub use chart::{Categories, ChartData, Series, XySeries};
 pub use error::{Error, Result};
+pub use picture::Fit;
 pub use presentation::{Presentation, ShapeRef, SlideId};
 pub use shape::{Placeholder, ShapeInfo, ShapeKind};
