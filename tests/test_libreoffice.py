@@ -20,7 +20,8 @@ pytestmark = [
 def edit_everything(prs: Presentation) -> None:
     prs.replace_text({"{{title}}": "Report", "{{customer}}": "Acme", "{{period}}": "Q3"})
     prs.shape("Revenue Chart").chart.replace_data(
-        ["A", "B", "C"], [Series("x", [1, 2, 3]), Series("y", [3, 2, 1]), Series("z", [2, 2, 2])]
+        [("2025", "H2"), ("2026", "H1"), ("2026", "H2")],
+        [Series("x", [1, 2, 3]), Series("y", [3, 2, 1]), Series("z", [2, 2, 2])],
     )
     prs.shape("Top Customers").table.fill([[f"c{i}", i, f"{i}%"] for i in range(8)])
     prs.shape("Scatter").chart.replace_xy_data([XySeries("s", [1, 2], [2, 1])])
