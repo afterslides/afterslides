@@ -276,11 +276,8 @@ struct LaidOut {
 }
 
 impl<'a> Scene<'a, '_> {
-    fn substitute(&self, family: &str) -> String {
-        let subs = &self.renderer.options.substitutions;
-        subs.iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(family))
-            .map_or_else(|| family.to_string(), |(_, v)| v.clone())
+    fn substitute(&mut self, family: &str) -> String {
+        self.renderer.resolve_family(family)
     }
 
     /// Lays out and draws a text body inside `rect` (shape coordinates).
@@ -869,7 +866,10 @@ pub(super) struct Label<'t> {
 impl Scene<'_, '_> {
     /// Lays out a label; returns its size (width, height) and the layout.
     fn label_layout(&mut self, label: &Label<'_>) -> (f64, f64, parley::Layout<Rgba>) {
-        let family = self.substitute(label.font.unwrap_or(&self.layers.theme.minor_font.clone()));
+        let requested = label
+            .font
+            .map_or_else(|| self.layers.theme.minor_font.clone(), str::to_string);
+        let family = self.substitute(&requested);
         let (fcx, lcx) = self.renderer.contexts();
         let mut builder = lcx.ranged_builder(fcx, label.text, 1.0, false);
         let families = vec![

@@ -1,13 +1,13 @@
 //! Rendering slides to PDF and PNG (feature `render`).
 //!
-//! Slides are first resolved into a [`display::Page`] (all inheritance,
-//! theme colours, geometry and text layout done), which the backends then
-//! draw: [`pdf`] with krilla, [`raster`] with tiny-skia.
+//! Slides are first resolved into a backend-neutral display list (all
+//! inheritance, theme colours, geometry and text layout done), which the
+//! backends then draw: krilla for PDF, tiny-skia for PNG.
 //!
 //! This is a prototype: shapes, pictures, text and tables are drawn; charts,
 //! SmartArt and effects are not yet (charts show a placeholder).
 
-pub mod display;
+pub(crate) mod display;
 
 mod chart;
 mod color;
@@ -31,9 +31,12 @@ use crate::presentation::{Presentation, SlideId};
 pub struct RenderOptions {
     /// Also render slides marked as hidden (PowerPoint skips them in PDFs).
     pub include_hidden: bool,
-    /// Extra directories with fonts (corporate fonts, Office fonts).
+    /// Extra directories with fonts (corporate fonts, Office fonts). Read
+    /// when the renderer first loads fonts; later changes have no effect.
     pub font_dirs: Vec<std::path::PathBuf>,
-    /// Font substitutions applied before lookup, e.g. Calibri -> Carlito.
+    /// Substitutes for fonts that are not installed, e.g. Calibri ->
+    /// Carlito (a metric-compatible replacement). Installed fonts are
+    /// always used as they are.
     pub substitutions: HashMap<String, String>,
 }
 
@@ -86,6 +89,8 @@ pub struct Renderer {
     fonts: Option<parley::FontContext>,
     layout: parley::LayoutContext<display::Rgba>,
     pub(crate) font_ids: FontIds,
+    /// Requested family -> family actually used.
+    families: HashMap<String, String>,
 }
 
 impl std::fmt::Debug for Renderer {
@@ -109,7 +114,35 @@ impl Renderer {
             fonts: None,
             layout: parley::LayoutContext::new(),
             font_ids: FontIds::default(),
+            families: HashMap::new(),
         }
+    }
+
+    /// The font family to use for `requested`: the font itself if it is
+    /// installed, else its configured substitute if that is installed, else
+    /// the requested name (layout then falls back to a generic sans-serif).
+    pub(crate) fn resolve_family(&mut self, requested: &str) -> String {
+        if let Some(found) = self.families.get(requested) {
+            return found.clone();
+        }
+        let substitute = self
+            .options
+            .substitutions
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(requested))
+            .map(|(_, v)| v.clone());
+        let (fonts, _) = self.contexts();
+        let resolved = if fonts.collection.family_id(requested).is_some() {
+            requested.to_string()
+        } else {
+            match substitute {
+                Some(sub) if fonts.collection.family_id(&sub).is_some() => sub,
+                _ => requested.to_string(),
+            }
+        };
+        self.families
+            .insert(requested.to_string(), resolved.clone());
+        resolved
     }
 
     /// Font and layout contexts; system fonts and the configured font
@@ -135,8 +168,8 @@ impl Renderer {
         &mut self.options
     }
 
-    /// The display list of one slide.
-    pub fn page(&mut self, prs: &Presentation, slide: SlideId) -> Result<display::Page> {
+    /// The display list of one slide (internal until the format settles).
+    pub(crate) fn page(&mut self, prs: &Presentation, slide: SlideId) -> Result<display::Page> {
         scene::build(self, prs, slide)
     }
 
@@ -179,5 +212,40 @@ fn register_dir(cx: &mut parley::FontContext, dir: &std::path::Path) {
             let blob = parley::fontique::Blob::new(std::sync::Arc::new(bytes));
             cx.collection.register_fonts(blob, None);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn installed(r: &mut Renderer, name: &str) -> bool {
+        r.contexts().0.collection.family_id(name).is_some()
+    }
+
+    #[test]
+    fn substitutes_only_missing_fonts() {
+        let mut r = Renderer::default();
+        // An installed font is used as is, even if a substitute is configured.
+        let any = r
+            .contexts()
+            .0
+            .collection
+            .family_names()
+            .next()
+            .map(str::to_string);
+        if let Some(name) = any {
+            r.options_mut()
+                .substitutions
+                .insert(name.clone(), "Something Else".into());
+            assert_eq!(r.resolve_family(&name), name);
+        }
+        // A missing font falls back to its substitute if that is installed.
+        let mut r = Renderer::default();
+        if !installed(&mut r, "Arial") && installed(&mut r, "Liberation Sans") {
+            assert_eq!(r.resolve_family("Arial"), "Liberation Sans");
+        }
+        // Unknown fonts without a substitute are left for generic fallback.
+        assert_eq!(r.resolve_family("No Such Font 4711"), "No Such Font 4711");
     }
 }
