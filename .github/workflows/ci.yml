@@ -35,7 +35,9 @@ jobs:
         env:
           PYO3_PYTHON: python
       - run: cargo test -p afterslides
-      - run: cargo doc -p afterslides --no-deps
+      - name: Test with the render feature
+        run: cargo test -p afterslides --features render
+      - run: cargo doc -p afterslides --no-deps --features render
         env:
           RUSTDOCFLAGS: -D warnings
 

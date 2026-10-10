@@ -9,8 +9,8 @@ step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
 step "cargo fmt";    cargo fmt --all --check
 step "cargo clippy"; cargo clippy --workspace --all-targets -- -D warnings
-step "cargo test";   cargo test -p afterslides
-step "cargo doc";    RUSTDOCFLAGS="-D warnings" cargo doc -p afterslides --no-deps --quiet
+step "cargo test";   cargo test -p afterslides && cargo test -p afterslides --features render
+step "cargo doc";    RUSTDOCFLAGS="-D warnings" cargo doc -p afterslides --no-deps --features render --quiet
 step "ruff";         uvx ruff@0.16.10 check && uvx ruff@0.16.10 format --check
 step "mypy";         uvx mypy --strict python/afterslides --ignore-missing-imports
 step "build";        uv run --no-sync maturin develop --quiet
