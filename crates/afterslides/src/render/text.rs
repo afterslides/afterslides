@@ -718,6 +718,14 @@ fn emit_layout(
             for cluster in run.visual_clusters() {
                 let color = cluster.style().brush;
                 let range = cluster.text_range();
+                // A ligature's later characters have no glyph of their own;
+                // their text belongs to the ligature glyph.
+                if cluster.is_ligature_continuation() {
+                    if let Some(last) = current.as_mut().and_then(|c| c.clusters.last_mut()) {
+                        last.end = last.end.max(range.end);
+                    }
+                    continue;
+                }
                 let start_x = x;
                 for (gi, g) in cluster.glyphs().enumerate() {
                     if current.as_ref().is_some_and(|c| c.color != color) {
