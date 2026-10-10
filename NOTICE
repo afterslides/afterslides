@@ -1,0 +1,8 @@
+afterslides
+Copyright 2026 Andreas Kluth and the afterslides contributors
+
+This product includes the DrawingML preset shape definitions from
+ECMA-376 "Office Open XML File Formats", Part 1, Annex D
+(crates/afterslides/src/render/presetShapeDefinitions.xml.z), in the form
+distributed by the Apache POI project (https://poi.apache.org/,
+Apache License 2.0).

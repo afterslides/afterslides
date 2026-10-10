@@ -144,6 +144,7 @@ pub(super) fn build(renderer: &mut Renderer, prs: &Presentation, slide: SlideId)
         height: cy as f64 / EMU_PER_PT,
     };
     scene.background();
+    scene.shapes();
     Ok(Page {
         width: scene.width,
         height: scene.height,

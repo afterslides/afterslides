@@ -11,9 +11,12 @@ pub mod display;
 
 mod color;
 mod fill;
+mod geom;
 mod pdf;
 mod raster;
 mod scene;
+mod shapes;
+mod stubs;
 
 use std::collections::HashMap;
 
