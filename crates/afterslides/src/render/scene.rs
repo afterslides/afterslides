@@ -118,8 +118,9 @@ impl<'a> Layers<'a> {
 /// Collects display items for one slide.
 pub(super) struct Scene<'a, 'r> {
     pub layers: Layers<'a>,
-    #[allow(dead_code)]
     pub renderer: &'r mut Renderer,
+    /// 1-based number for slide number fields.
+    pub slide_number: usize,
     pub items: Vec<Item>,
     pub width: f64,
     pub height: f64,
@@ -139,6 +140,7 @@ pub(super) fn build(renderer: &mut Renderer, prs: &Presentation, slide: SlideId)
     let mut scene = Scene {
         layers,
         renderer,
+        slide_number: prs.slide_index(slide)? + 1,
         items: Vec::new(),
         width: cx as f64 / EMU_PER_PT,
         height: cy as f64 / EMU_PER_PT,

@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use kurbo::{Affine, BezPath, Point, Rect};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Rgba {
     pub r: u8,
     pub g: u8,
@@ -85,13 +85,25 @@ pub enum ImageFormat {
     Jpeg,
 }
 
+/// Shared font file bytes.
+pub type FontBytes = Arc<dyn AsRef<[u8]> + Send + Sync>;
+
 /// A font as raw bytes plus the face index inside a collection.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FontRef {
-    pub data: Arc<Vec<u8>>,
+    pub data: FontBytes,
     pub index: u32,
     /// Stable identity for caches in the backends.
     pub id: u64,
+}
+
+impl std::fmt::Debug for FontRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FontRef")
+            .field("id", &self.id)
+            .field("index", &self.index)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

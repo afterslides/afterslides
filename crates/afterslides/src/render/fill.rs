@@ -107,12 +107,9 @@ fn gradient(fill: &Element, ctx: &ColorContext<'_>, bounds: Rect) -> Option<Pain
 
 /// Resolves an `a:ln` into a stroke; `None` for no line.
 pub fn resolve_line(ln: &Element, ctx: &ColorContext<'_>, bounds: Rect) -> Option<Stroke> {
-    let paint = match find_fill(ln) {
-        Some(f) => match resolve_fill(f, ctx, bounds)? {
-            Fill::Paint(p) => p,
-            Fill::None | Fill::Picture { .. } => return None,
-        },
-        None => return None,
+    let paint = match resolve_fill(find_fill(ln)?, ctx, bounds)? {
+        Fill::Paint(p) => p,
+        Fill::None | Fill::Picture { .. } => return None,
     };
     // Width in EMU; 0 means hairline. Default is 9525 EMU (0.75 pt).
     let width = ln

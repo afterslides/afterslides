@@ -3,19 +3,9 @@
 use kurbo::{Affine, Rect};
 
 use super::scene::{Layer, Scene};
-use super::shapes::Xfrm;
 use crate::xml::Element;
 
 impl<'a> Scene<'a, '_> {
-    pub(super) fn text_frame(
-        &mut self,
-        _chain: &[&'a Element],
-        _rect: Rect,
-        _transform: Affine,
-        _xfrm: Xfrm,
-    ) {
-    }
-
     pub(super) fn table(
         &mut self,
         _tbl: &'a Element,

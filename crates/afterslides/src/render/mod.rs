@@ -17,6 +17,7 @@ mod raster;
 mod scene;
 mod shapes;
 mod stubs;
+mod text;
 
 use std::collections::HashMap;
 
@@ -57,9 +58,33 @@ impl Default for RenderOptions {
     }
 }
 
+/// Maps parley's font blobs to display-list font references, so each font
+/// file is shared (not copied) and has a stable id.
+#[derive(Default)]
+pub(crate) struct FontIds {
+    known: HashMap<(u64, u32), display::FontRef>,
+}
+
+impl FontIds {
+    pub(crate) fn get(&mut self, font: &parley::FontData) -> display::FontRef {
+        let key = (font.data.id(), font.index);
+        self.known
+            .entry(key)
+            .or_insert_with(|| display::FontRef {
+                data: std::sync::Arc::new(font.data.clone()),
+                index: font.index,
+                id: key.0.wrapping_mul(31).wrapping_add(u64::from(key.1)),
+            })
+            .clone()
+    }
+}
+
 /// Renders presentations. Keep one around: it caches the system's fonts.
 pub struct Renderer {
-    options: RenderOptions,
+    pub(crate) options: RenderOptions,
+    fonts: Option<parley::FontContext>,
+    layout: parley::LayoutContext<display::Rgba>,
+    pub(crate) font_ids: FontIds,
 }
 
 impl std::fmt::Debug for Renderer {
@@ -78,7 +103,31 @@ impl Default for Renderer {
 
 impl Renderer {
     pub fn new(options: RenderOptions) -> Renderer {
-        Renderer { options }
+        Renderer {
+            options,
+            fonts: None,
+            layout: parley::LayoutContext::new(),
+            font_ids: FontIds::default(),
+        }
+    }
+
+    /// Font and layout contexts; system fonts and the configured font
+    /// directories are loaded on first use.
+    pub(crate) fn contexts(
+        &mut self,
+    ) -> (
+        &mut parley::FontContext,
+        &mut parley::LayoutContext<display::Rgba>,
+    ) {
+        let dirs = &self.options.font_dirs;
+        let fonts = self.fonts.get_or_insert_with(|| {
+            let mut cx = parley::FontContext::new();
+            for dir in dirs {
+                register_dir(&mut cx, dir);
+            }
+            cx
+        });
+        (fonts, &mut self.layout)
     }
 
     pub fn options_mut(&mut self) -> &mut RenderOptions {
@@ -106,5 +155,28 @@ impl Renderer {
     pub fn png(&mut self, prs: &Presentation, slide: SlideId, scale: f64) -> Result<Vec<u8>> {
         let page = self.page(prs, slide)?;
         raster::png(&page, scale)
+    }
+}
+
+fn register_dir(cx: &mut parley::FontContext, dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            register_dir(cx, &path);
+            continue;
+        }
+        let is_font = path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+            matches!(
+                e.to_ascii_lowercase().as_str(),
+                "ttf" | "otf" | "ttc" | "otc"
+            )
+        });
+        if is_font && let Ok(bytes) = std::fs::read(&path) {
+            let blob = parley::fontique::Blob::new(std::sync::Arc::new(bytes));
+            cx.collection.register_fonts(blob, None);
+        }
     }
 }

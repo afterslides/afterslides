@@ -283,7 +283,7 @@ fn draw_glyphs(
     transform: Affine,
     mask: Option<&sk::Mask>,
 ) {
-    let Ok(font) = skrifa::FontRef::from_index(&run.font.data, run.font.index) else {
+    let Ok(font) = skrifa::FontRef::from_index((*run.font.data).as_ref(), run.font.index) else {
         return;
     };
     let outlines = font.outline_glyphs();
