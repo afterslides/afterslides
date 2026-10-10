@@ -26,9 +26,9 @@ OOXML (slide, layout, master, theme)
 | Colours | theme colours, `clrMap`, `lumMod/lumOff/tint/shade/alpha/sat/hue`, `phClr` in theme styles |
 | Geometry | all ~187 preset shapes via an evaluator over the ECMA-376 definitions, custom geometry, arcs, rotation, flips, groups |
 | Fills and lines | solid, linear/radial gradient, picture (with crop), pattern (as solid), theme style references, dashes, caps, joins |
-| Text | full style chain (default text style, master title/body/other styles, font reference, list styles, paragraph, run), parley layout, alignment, line spacing, first-line indent, bullets and numbering, breaks, slide number fields, hyperlink colour, underline/strike, stored autofit, font substitution |
+| Text | full style chain (default text style, master title/body/other styles, font reference, list styles, paragraph, run), parley layout, alignment, line spacing, first-line indent, bullets and numbering, breaks, slide number fields, hyperlink colour, underline/strike, stored autofit, font substitution (only for fonts that are not installed) |
 | Tables | grid, row growth, merges, fills, borders, margins, anchoring, table styles; built-in default style approximated |
-| Charts | column/bar (clustered, stacked, percent), line with markers, area, pie, doughnut; title (incl. automatic), legend, value axis scaling like PowerPoint, number formats, gridlines, category labels |
+| Charts | column/bar (clustered, stacked, percent), line with markers, area, pie, doughnut; title (incl. automatic), legend, value axis scaling (5% headroom, nice major unit: matches LibreOffice's output for the fixture; PowerPoint's exact rule unverified), number formats, gridlines, category labels |
 | Output | `Presentation.render_pdf()`, `Slide.render_png(scale)`; hidden slides skipped unless asked |
 
 ## Measurements
@@ -81,15 +81,22 @@ measure "roughly right", not fidelity to PowerPoint.
   libgcc. fontique originally linked fontconfig (plus freetype, harfbuzz,
   glib), which rules out manylinux wheels; with `fontconfig-dlopen` it is
   loaded at runtime when present.
-- Built on a very recent glibc, the wheel needs a manylinux container to get
-  a manylinux tag. That is how release wheels are built anyway (M6).
-- Release build of the wheel: ~27 s with rendering vs ~22 s without.
+- **manylinux verified:** built in the official `ghcr.io/pyo3/maturin`
+  container, the wheel (rendering included) is tagged
+  `manylinux_2_17_x86_64.manylinux2014_x86_64`, is 3.5 MB, installs into a
+  fresh environment and renders. (A local build on a very recent glibc gets
+  a plain `linux` tag; release wheels are built in the container.)
+- Clean release build in that container: 1 min 21 s with rendering.
+  Incremental local builds: ~27 s with rendering vs ~22 s without.
 
 ### Platforms
 
-CI builds and runs the rendering tests on Linux, macOS and Windows with
-Python 3.9 and 3.13. Rendering needs Rust 1.92 (krilla); the core crate
-without the feature stays at 1.88.
+CI builds rendering on Linux, macOS and Windows with Python 3.9 and 3.13.
+The PNG and robustness tests run on all three; the tests that check PDF
+text need poppler's `pdftotext` and run on Linux only. The render unit tests
+(geometry, colours, number formats, axis scales, font substitution) run in
+the Rust CI job. Rendering needs Rust 1.92 (krilla); the core crate without
+the feature stays at 1.88.
 
 ### Memory
 
@@ -116,14 +123,18 @@ PDF and PNG backends agree within 1–4% RMSE (anti-aliasing and hinting).
    the PNG fallback), picture effects and recolouring.
 6. **SmartArt:** drawn from the cached drawing part.
 7. **Fonts:** a Python API for font directories and substitutions (the Rust
-   API has it).
+   API has it; font directories are read once, when fonts are first loaded).
 
 ## Recommendation
 
-- **Keep the pure-Rust stack.** Packaging is trivial, there is no unsafe or
-  native code in our dependency path, and the quality ceiling is set by our
-  OOXML interpretation, not by the drawing library. Revisit Skia only if
-  shadows, glow and soft edges become a must-have.
+- **Keep the pure-Rust stack.** Packaging is trivial: there is no C or C++
+  code that we compile or ship, our own crates forbid `unsafe`, and system
+  font discovery goes through the OS (fontconfig loaded at runtime,
+  CoreText, DirectWrite). Dependencies such as tiny-skia and the JPEG
+  decoder do use `unsafe` internally, as all graphics libraries do. The
+  quality ceiling is set by our OOXML interpretation, not by the drawing
+  library. Revisit Skia only if shadows, glow and soft edges become a
+  must-have.
 - **Get PowerPoint reference PDFs.** With PowerPoint-exported PDFs of the
   fixture and a few corpus decks, the comparison measures what matters.
   One-off access to PowerPoint is enough.

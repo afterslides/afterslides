@@ -137,9 +137,10 @@ pub(super) fn format_value(v: f64, code: &str) -> String {
     out
 }
 
-/// Axis range and major unit for values between `lo` and `hi`, the way
-/// PowerPoint picks them: about 5% headroom beyond the data, then rounded
-/// out to a "nice" major unit.
+/// Axis range and major unit for values between `lo` and `hi`: about 5%
+/// headroom beyond the data, then rounded out to a "nice" major unit. This
+/// matches the reference renderings of the fixture; PowerPoint's exact rule
+/// is not documented.
 fn nice_scale(lo: f64, hi: f64) -> (f64, f64, f64) {
     let (lo, hi) = (lo.min(0.0), hi.max(0.0));
     let range = (hi - lo).max(f64::EPSILON);
@@ -964,7 +965,7 @@ mod tests {
 
     #[test]
     fn scales() {
-        // The fixture's charts: PowerPoint draws 0..18 by 2 and 0..140 by 20.
+        // The fixture's charts as the reference renders them: 0..18 by 2, 0..140 by 20.
         assert_eq!(nice_scale(9.75, 15.25), (0.0, 18.0, 2.0));
         assert_eq!(nice_scale(90.0, 120.0), (0.0, 140.0, 20.0));
         let (lo, hi, _) = nice_scale(-5.0, 7.0);
