@@ -192,6 +192,12 @@ pub(super) struct TextSources<'a> {
     pub shape_styles: Vec<&'a Element>,
     /// `a:bodyPr` elements, nearest first.
     pub body_props: Vec<&'a Element>,
+    /// Insets (left, top, right, bottom) in points, replacing `bodyPr`'s.
+    pub insets: Option<[f64; 4]>,
+    /// Vertical anchor (`t`, `ctr`, `b`), replacing `bodyPr`'s.
+    pub anchor: Option<String>,
+    /// Bold and colour from a table style, above the master styles.
+    pub style_run: Option<(Option<bool>, Option<Rgba>)>,
 }
 
 fn level_props(
@@ -278,13 +284,14 @@ impl<'a> Scene<'a, '_> {
     }
 
     /// Lays out and draws a text body inside `rect` (shape coordinates).
+    /// Returns the height the text needs, including insets.
     pub(super) fn draw_text_body(
         &mut self,
         body: &'a Element,
         sources: &TextSources<'a>,
         rect: Rect,
         transform: Affine,
-    ) {
+    ) -> f64 {
         // Owned copies, so the scene can be borrowed mutably while laying out.
         let theme = self.layers.theme.clone();
         let color_map = self.layers.color_map.clone();
@@ -308,15 +315,22 @@ impl<'a> Scene<'a, '_> {
                 .unwrap_or(default)
                 / EMU_PER_PT
         };
-        let (l, t, r, b) = (
-            inset("lIns", 91440.0),
-            inset("tIns", 45720.0),
-            inset("rIns", 91440.0),
-            inset("bIns", 45720.0),
-        );
+        let (l, t, r, b) = match sources.insets {
+            Some([l, t, r, b]) => (l, t, r, b),
+            None => (
+                inset("lIns", 91440.0),
+                inset("tIns", 45720.0),
+                inset("rIns", 91440.0),
+                inset("bIns", 45720.0),
+            ),
+        };
         let area = Rect::new(rect.x0 + l, rect.y0 + t, rect.x1 - r, rect.y1 - b);
         let wrap = body_attr("wrap").as_deref() != Some("none");
-        let anchor = body_attr("anchor").unwrap_or_else(|| "t".into());
+        let anchor = sources
+            .anchor
+            .clone()
+            .or_else(|| body_attr("anchor"))
+            .unwrap_or_else(|| "t".into());
         let autofit = sources
             .body_props
             .iter()
@@ -364,6 +378,14 @@ impl<'a> Scene<'a, '_> {
                 from_ref.color = child_color(fr, &colors);
                 props.run.overlay(&from_ref);
             }
+            if let Some((bold, color)) = sources.style_run {
+                let from_style = RunProps {
+                    bold,
+                    color,
+                    ..RunProps::default()
+                };
+                props.run.overlay(&from_style);
+            }
             for style in &sources.shape_styles {
                 if let Some(lp) = level_props(style, level, &colors, &theme) {
                     props.overlay(&lp);
@@ -400,16 +422,7 @@ impl<'a> Scene<'a, '_> {
         }
 
         // Vertical placement.
-        let mut total = 0.0;
-        for (i, p) in paragraphs.iter().enumerate() {
-            if i > 0 {
-                total += p.before;
-            }
-            total += f64::from(p.layout.height()).max(p.empty_height);
-            if i + 1 < paragraphs.len() {
-                total += p.after;
-            }
-        }
+        let total = text_height(&paragraphs);
         let mut y = match anchor.as_str() {
             "ctr" => area.y0 + (area.height() - total) / 2.0,
             "b" => area.y1 - total,
@@ -422,8 +435,25 @@ impl<'a> Scene<'a, '_> {
             self.emit_paragraph(p, area.x0 + p.x, y, transform);
             y += f64::from(p.layout.height()).max(p.empty_height) + p.after;
         }
+        total + t + b
     }
+}
 
+fn text_height(paragraphs: &[LaidOut]) -> f64 {
+    let mut total = 0.0;
+    for (i, p) in paragraphs.iter().enumerate() {
+        if i > 0 {
+            total += p.before;
+        }
+        total += f64::from(p.layout.height()).max(p.empty_height);
+        if i + 1 < paragraphs.len() {
+            total += p.after;
+        }
+    }
+    total
+}
+
+impl<'a> Scene<'a, '_> {
     #[allow(clippy::too_many_arguments)]
     fn layout_paragraph(
         &mut self,
@@ -802,6 +832,9 @@ impl<'a> Scene<'a, '_> {
             font_ref: chain[0].path(&[(ns::P, "style"), (ns::A, "fontRef")]),
             shape_styles,
             body_props,
+            insets: None,
+            anchor: None,
+            style_run: None,
         };
         let _ = sp_pr;
         self.draw_text_body(body, &sources, rect, transform);

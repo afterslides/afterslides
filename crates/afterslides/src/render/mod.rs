@@ -17,6 +17,7 @@ mod raster;
 mod scene;
 mod shapes;
 mod stubs;
+mod table;
 mod text;
 
 use std::collections::HashMap;
