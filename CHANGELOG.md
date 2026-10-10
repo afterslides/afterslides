@@ -33,6 +33,11 @@ contain breaking changes.
 - `replace_text` covers chart titles and speaker notes; `\n` and `\v` in
   replacement values become paragraphs and line breaks.
 
+- Rendering prototype (feature `render`, on by default in the Python
+  package): `Presentation.render_pdf()` and `Slide.render_png()` draw
+  shapes, pictures, text, tables and column/bar/line/area/pie charts in
+  pure Rust. See `docs/render-prototype.md`.
+
 ### Changed
 
 - `slide.shape(name)` raises `InvalidArgumentError` when several shapes

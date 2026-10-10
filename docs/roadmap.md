@@ -20,6 +20,14 @@ Open an issue if you need something that is further down.
   hidden slides, placeholders by type/index, picture replacement, live
   shape handles.
 
+## Rendering (prototype done)
+
+See [render-prototype.md](render-prototype.md) for the findings. Next:
+chart details (data labels, scatter/bubble, secondary axes, manual
+layouts), arrow heads, a font configuration API in Python, effects,
+EMF/WMF images, SmartArt. PowerPoint-exported reference PDFs would make the
+comparison meaningful.
+
 ## M6: releases
 
 - Wheels and sdist on tags, PyPI and crates.io publishing.
@@ -40,4 +48,3 @@ Open an issue if you need something that is further down.
 
 - Legacy binary `.ppt`.
 - Building decks from scratch (use python-pptx for that).
-- Rendering to PDF/images (convert with LibreOffice).

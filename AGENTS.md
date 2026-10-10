@@ -26,6 +26,14 @@ crates/afterslides/      Rust core (published crate). No Python knowledge.
   src/table.rs           Table read/fill/resize.
   src/chart.rs           Chart caches, series cloning, embedded workbook.
   src/slide.rs           Delete/duplicate/move slides and every reference.
+  src/render/            Rendering prototype (feature `render`, Rust 1.92):
+    scene.rs, shapes.rs    layers (slide/layout/master/theme), shape tree
+    color.rs, fill.rs      theme colours and modifiers, fills, lines
+    geom.rs                preset/custom geometry evaluator (+ presets .xml.z)
+    text.rs, table.rs      text inheritance and parley layout, tables
+    chart.rs               chart drawing from caches
+    display.rs             backend-neutral display list
+    pdf.rs, raster.rs      krilla (PDF) and tiny-skia (PNG) backends
   tests/template.rs      Integration tests on tests/fixtures/template.pptx.
 crates/afterslides-py/   PyO3 bindings (`afterslides._native`), handle-based.
 python/afterslides/      Public Python API (`_api.py`), errors, `_native.pyi`.
@@ -50,6 +58,7 @@ uv run --no-sync pytest -m "not slow"         # quick
 uv run --no-sync pytest                       # incl. memory soak and LibreOffice
 uvx ruff check && uvx ruff format --check && uvx mypy --strict python/afterslides
 uv run python scripts/make_fixtures.py        # after changing the fixture script
+uv run --no-sync python scripts/render_compare.py [deck.pptx ...]   # rendering vs LibreOffice
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above on Linux, macOS and
@@ -139,6 +148,28 @@ Windows plus an MSRV check (Rust 1.88). Keep it green; don't merge red.
   prefixes (`[1]Data`); clean them before building the embedded workbook.
 - python-pptx writes `'` quotes in the XML declaration; our writer uses `"`.
   That's fine, but don't compare XML of modified parts byte-wise in tests.
+
+## Rendering notes
+
+- Units: EMU / 12700 = pt; `sz` is 1/100 pt; angles are 60000ths of a
+  degree; percentages are 100000 = 100% but some files write `"50%"`
+  (`color::parse_fraction` handles both).
+- Placeholders on masters and layouts are templates and are not drawn;
+  slide placeholders inherit position, text styles and body properties
+  from them (match by `idx`, then type; `ctrTitle` ~ `title`, `subTitle` ~
+  `body`).
+- `a:arcTo stAng/swAng` are true angles of the ellipse; convert to
+  parametric angles before drawing (`geom::parametric`).
+- Theme style references substitute `phClr` with the reference's colour.
+- Ligature glyphs must carry the text of every character they cover, or
+  PDF text extraction loses characters.
+- fontique must use `fontconfig-dlopen`; linking fontconfig makes wheels
+  non-manylinux.
+- Never `unwrap`/subtract unchecked on values from the file: the renderer
+  sees every odd deck in the corpus (CI renders all of them, debug builds
+  catch overflow).
+- Measure changes with `scripts/render_compare.py`; quote the RMSE before
+  and after in the commit message.
 
 ## Testing approach
 

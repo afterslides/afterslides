@@ -57,9 +57,14 @@ prs.save("report.pptx")
   table data, delete a slide, save) takes about 4 ms. No .NET, Java or
   LibreOffice needed at runtime.
 
-What it does **not** do: render slides to PDF or images, build decks from
-scratch, or read legacy `.ppt` files. For PDFs, convert the result with
-LibreOffice (`soffice --headless --convert-to pdf report.pptx`).
+- **Rendering (prototype)**: slides to PDF (searchable text, embedded
+  fonts) and PNG, in pure Rust. Shapes, pictures, text, tables and the
+  common chart types are drawn; effects and some chart details are not yet.
+  See [docs/render-prototype.md](docs/render-prototype.md).
+
+What it does **not** do: build decks from scratch or read legacy `.ppt`
+files. Until rendering leaves the prototype stage, LibreOffice gives more
+complete PDFs (`soffice --headless --convert-to pdf report.pptx`).
 
 ## Installation
 
@@ -200,6 +205,18 @@ table.fill(rows, start_row=0)  # no header
 table[0, 1] = "Revenue (EUR)"
 table.delete_column(-1)
 ```
+
+### Rendering (prototype)
+
+```python
+prs.render_pdf("report.pdf")  # visible slides; include_hidden=True for all
+png = prs.slides[0].render_png(scale=2)  # 2 pixels per point = 144 dpi
+```
+
+Fonts come from the system. Office fonts that are usually missing on
+servers are replaced by metric-compatible ones (Calibri by Carlito, Arial by
+Liberation Sans, ...), so install those (`fonts-crosextra-carlito`,
+`fonts-liberation`) or the original fonts for faithful line breaks.
 
 ### Errors
 
