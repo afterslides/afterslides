@@ -188,7 +188,7 @@ fn all_series(plot_area: &Element) -> Vec<&Element> {
 // ---- reading caches -------------------------------------------------------
 
 /// Points of the first cache or literal under `el` (`c:cat`, `c:val`, ...).
-fn read_points(el: &Element) -> (Vec<Option<String>>, Option<String>) {
+pub(crate) fn read_points(el: &Element) -> (Vec<Option<String>>, Option<String>) {
     let mut cache = None;
     el.walk(&mut |e| {
         if cache.is_none()
@@ -232,7 +232,7 @@ fn read_points(el: &Element) -> (Vec<Option<String>>, Option<String>) {
     (out, format)
 }
 
-fn read_numbers(el: Option<&Element>) -> Vec<Option<f64>> {
+pub(crate) fn read_numbers(el: Option<&Element>) -> Vec<Option<f64>> {
     el.map(|el| {
         read_points(el)
             .0
@@ -243,7 +243,7 @@ fn read_numbers(el: Option<&Element>) -> Vec<Option<f64>> {
     .unwrap_or_default()
 }
 
-fn series_name(ser: &Element) -> String {
+pub(crate) fn series_name(ser: &Element) -> String {
     let Some(tx) = ser.child(ns::C, "tx") else {
         return String::new();
     };
@@ -817,7 +817,7 @@ fn build_workbook(sheet: &str, columns: &[Column]) -> Result<Vec<u8>> {
     wb.save_to_buffer().map_err(wb_err)
 }
 
-fn read_categories(cat: &Element) -> Categories {
+pub(crate) fn read_categories(cat: &Element) -> Categories {
     if let Some(levels) = read_levels(cat) {
         return Categories::Levels(levels);
     }

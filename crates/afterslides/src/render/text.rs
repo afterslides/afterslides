@@ -840,3 +840,81 @@ impl<'a> Scene<'a, '_> {
         self.draw_text_body(body, &sources, rect, transform);
     }
 }
+
+/// Horizontal anchor of a label.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum HAlign {
+    Left,
+    Center,
+    Right,
+}
+
+/// A single line of text with one style, e.g. a chart label.
+pub(super) struct Label<'t> {
+    pub text: &'t str,
+    pub size: f64,
+    pub bold: bool,
+    pub color: Rgba,
+    pub font: Option<&'t str>,
+}
+
+impl Scene<'_, '_> {
+    /// Lays out a label; returns its size (width, height) and the layout.
+    fn label_layout(&mut self, label: &Label<'_>) -> (f64, f64, parley::Layout<Rgba>) {
+        let family = self.substitute(label.font.unwrap_or(&self.layers.theme.minor_font.clone()));
+        let (fcx, lcx) = self.renderer.contexts();
+        let mut builder = lcx.ranged_builder(fcx, label.text, 1.0, false);
+        let families = vec![
+            FontFamilyName::Named(Cow::Owned(family)),
+            FontFamilyName::Generic(GenericFamily::SansSerif),
+        ];
+        builder.push_default(StyleProperty::FontFamily(FontFamily::List(Cow::Owned(
+            families,
+        ))));
+        builder.push_default(StyleProperty::FontSize(label.size as f32));
+        builder.push_default(StyleProperty::LineHeight(LineHeight::MetricsRelative(1.0)));
+        if label.bold {
+            builder.push_default(StyleProperty::FontWeight(FontWeight::BOLD));
+        }
+        builder.push_default(StyleProperty::Brush(label.color));
+        let mut layout = builder.build(label.text);
+        layout.break_all_lines(None);
+        layout.align(Alignment::Left, AlignmentOptions::default());
+        (
+            f64::from(layout.width()),
+            f64::from(layout.height()),
+            layout,
+        )
+    }
+
+    pub(super) fn measure_label(&mut self, label: &Label<'_>) -> (f64, f64) {
+        let (w, h, _) = self.label_layout(label);
+        (w, h)
+    }
+
+    /// Draws a label with its top edge at `y` and `x` given by `align`.
+    pub(super) fn draw_label(
+        &mut self,
+        label: &Label<'_>,
+        x: f64,
+        y: f64,
+        align: HAlign,
+        transform: Affine,
+    ) -> (f64, f64) {
+        let (w, h, layout) = self.label_layout(label);
+        let left = match align {
+            HAlign::Left => x,
+            HAlign::Center => x - w / 2.0,
+            HAlign::Right => x - w,
+        };
+        emit_layout(
+            &mut self.items,
+            &layout,
+            label.text,
+            transform * Affine::translate((left, y)),
+            &[],
+            &mut self.renderer.font_ids,
+        );
+        (w, h)
+    }
+}

@@ -226,7 +226,8 @@ impl<'a> Scene<'a, '_> {
         let style_for = |cell: &Cell<'_>| {
             let mut s = part_style("wholeTbl");
             let data_row = cell.row.saturating_sub(usize::from(flag("firstRow")));
-            if flag("bandRow") && !(flag("firstRow") && cell.row == 0) && data_row.is_multiple_of(2) {
+            if flag("bandRow") && !(flag("firstRow") && cell.row == 0) && data_row.is_multiple_of(2)
+            {
                 overlay(&mut s, &part_style("band1H"));
             }
             if flag("bandCol") && cell.col.is_multiple_of(2) {

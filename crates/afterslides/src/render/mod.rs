@@ -9,6 +9,7 @@
 
 pub mod display;
 
+mod chart;
 mod color;
 mod fill;
 mod geom;
@@ -16,7 +17,6 @@ mod pdf;
 mod raster;
 mod scene;
 mod shapes;
-mod stubs;
 mod table;
 mod text;
 
