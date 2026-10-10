@@ -14,8 +14,12 @@ name = "_native"
 crate-type = ["cdylib"]
 
 [dependencies]
-afterslides = { workspace = true, features = ["render"] }
+afterslides.workspace = true
 pyo3.workspace = true
+
+[features]
+default = ["render"]
+render = ["afterslides/render"]
 
 [lints]
 workspace = true

@@ -117,8 +117,22 @@ enum PyCategories {
 #[pyclass(module = "afterslides._native", name = "Presentation")]
 struct PyPresentation {
     inner: Presentation,
-    /// Created on first render; caches fonts across calls.
-    renderer: Option<afterslides::render::Renderer>,
+}
+
+/// One renderer per process: loading the system font list takes tens of
+/// milliseconds, so it is done once and shared (a bounded cache).
+#[cfg(feature = "render")]
+static RENDERER: std::sync::Mutex<Option<afterslides::render::Renderer>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(feature = "render")]
+fn with_renderer<T>(
+    f: impl FnOnce(&mut afterslides::render::Renderer) -> afterslides::Result<T>,
+) -> PyResult<T> {
+    let mut guard = RENDERER
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    f(guard.get_or_insert_with(Default::default)).py()
 }
 
 #[pymethods]
@@ -126,10 +140,7 @@ impl PyPresentation {
     #[staticmethod]
     fn open(py: Python<'_>, path: PathBuf) -> PyResult<Self> {
         let inner = py.detach(|| Presentation::open(path)).py()?;
-        Ok(PyPresentation {
-            inner,
-            renderer: None,
-        })
+        Ok(PyPresentation { inner })
     }
 
     #[staticmethod]
@@ -137,10 +148,7 @@ impl PyPresentation {
         // Copy out of the Python buffer before releasing the interpreter.
         let data = data.to_vec();
         let inner = py.detach(move || Presentation::from_bytes(&data)).py()?;
-        Ok(PyPresentation {
-            inner,
-            renderer: None,
-        })
+        Ok(PyPresentation { inner })
     }
 
     fn save(&mut self, py: Python<'_>, path: PathBuf) -> PyResult<()> {
@@ -158,30 +166,32 @@ impl PyPresentation {
 
     // ---- rendering (prototype) ----------------------------------------------
 
+    #[cfg(feature = "render")]
     #[pyo3(signature = (include_hidden=false))]
     fn render_pdf<'py>(
-        &mut self,
+        &self,
         py: Python<'py>,
         include_hidden: bool,
     ) -> PyResult<Bound<'py, PyBytes>> {
-        let renderer = self.renderer.get_or_insert_with(Default::default);
-        renderer.options_mut().include_hidden = include_hidden;
         let inner = &self.inner;
-        let bytes = py.detach(|| renderer.pdf(inner)).py()?;
+        let bytes = py.detach(|| {
+            with_renderer(|r| {
+                r.options_mut().include_hidden = include_hidden;
+                r.pdf(inner)
+            })
+        })?;
         Ok(PyBytes::new(py, &bytes))
     }
 
+    #[cfg(feature = "render")]
     fn render_png<'py>(
-        &mut self,
+        &self,
         py: Python<'py>,
         slide: u32,
         scale: f64,
     ) -> PyResult<Bound<'py, PyBytes>> {
-        let renderer = self.renderer.get_or_insert_with(Default::default);
         let inner = &self.inner;
-        let bytes = py
-            .detach(|| renderer.png(inner, SlideId(slide), scale))
-            .py()?;
+        let bytes = py.detach(|| with_renderer(|r| r.png(inner, SlideId(slide), scale)))?;
         Ok(PyBytes::new(py, &bytes))
     }
 
