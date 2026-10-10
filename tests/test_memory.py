@@ -33,6 +33,8 @@ def cycle(data: bytes, out: Path) -> None:
     prs.slides[3].delete()
     prs.to_bytes()
     prs.save(out)
+    prs.render_pdf()
+    prs.slides[0].render_png(scale=0.5)
 
 
 @pytest.mark.slow

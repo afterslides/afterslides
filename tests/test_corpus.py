@@ -87,6 +87,17 @@ def test_untouched_round_trip(path: Path) -> None:
 
 
 @pytest.mark.parametrize("path", DECKS, ids=ids(DECKS))
+def test_render(path: Path) -> None:
+    loaded = load(path)
+    if loaded is None:
+        pytest.skip("not a readable package")
+    _, prs = loaded
+    assert prs.render_pdf(include_hidden=True).startswith(b"%PDF-")
+    for slide in prs.slides:
+        assert slide.render_png(scale=0.25)[:4] == b"\x89PNG"
+
+
+@pytest.mark.parametrize("path", DECKS, ids=ids(DECKS))
 def test_read_everything(path: Path) -> None:
     loaded = load(path)
     if loaded is None:

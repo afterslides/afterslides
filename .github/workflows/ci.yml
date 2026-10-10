@@ -78,7 +78,7 @@ jobs:
         shell: bash
         run: |
           uv venv --python "${{ matrix.python }}"
-          uv pip install maturin pytest python-pptx openpyxl
+          uv pip install maturin pytest python-pptx openpyxl pillow
           uv run --no-sync maturin develop --release
       - name: Test
         run: uv run --no-sync pytest -m "not libreoffice" -v
@@ -94,12 +94,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: astral-sh/setup-uv@v10.2.0
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-impress
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-impress poppler-utils fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation
       - run: |
           uv venv --python 3.12
-          uv pip install maturin pytest python-pptx openpyxl
+          uv pip install maturin pytest python-pptx openpyxl pillow
           uv run --no-sync maturin develop --release
       - run: uv run --no-sync pytest -m libreoffice -v
+      - name: Rendering tests (with poppler and metric-compatible fonts)
+        run: uv run --no-sync pytest tests/test_render.py -v
 
   corpus:
     name: Real-world corpus + Open XML SDK validation
@@ -122,7 +124,7 @@ jobs:
       - run: scripts/fetch_corpus.sh
       - run: |
           uv venv --python 3.12
-          uv pip install maturin pytest python-pptx openpyxl
+          uv pip install maturin pytest python-pptx openpyxl pillow
           uv run --no-sync maturin develop --release
       - name: Run all edits on all decks, keeping every result
         run: uv run --no-sync pytest -m "not slow and not libreoffice" -q

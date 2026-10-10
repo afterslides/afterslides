@@ -40,6 +40,8 @@ dev = [
     "maturin>=1.9,<2",
     "pytest>=8",
     "python-pptx>=1.0.2",
+    "openpyxl>=3.1",
+    "pillow>=10",
     "ruff>=0.6",
     "mypy>=1.11",
 ]
