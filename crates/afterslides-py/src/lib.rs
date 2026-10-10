@@ -117,6 +117,8 @@ enum PyCategories {
 #[pyclass(module = "afterslides._native", name = "Presentation")]
 struct PyPresentation {
     inner: Presentation,
+    /// Created on first render; caches fonts across calls.
+    renderer: Option<afterslides::render::Renderer>,
 }
 
 #[pymethods]
@@ -124,7 +126,10 @@ impl PyPresentation {
     #[staticmethod]
     fn open(py: Python<'_>, path: PathBuf) -> PyResult<Self> {
         let inner = py.detach(|| Presentation::open(path)).py()?;
-        Ok(PyPresentation { inner })
+        Ok(PyPresentation {
+            inner,
+            renderer: None,
+        })
     }
 
     #[staticmethod]
@@ -132,7 +137,10 @@ impl PyPresentation {
         // Copy out of the Python buffer before releasing the interpreter.
         let data = data.to_vec();
         let inner = py.detach(move || Presentation::from_bytes(&data)).py()?;
-        Ok(PyPresentation { inner })
+        Ok(PyPresentation {
+            inner,
+            renderer: None,
+        })
     }
 
     fn save(&mut self, py: Python<'_>, path: PathBuf) -> PyResult<()> {
@@ -145,6 +153,35 @@ impl PyPresentation {
     fn to_bytes<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
         let inner = &mut self.inner;
         let bytes = py.detach(move || inner.to_bytes()).py()?;
+        Ok(PyBytes::new(py, &bytes))
+    }
+
+    // ---- rendering (prototype) ----------------------------------------------
+
+    #[pyo3(signature = (include_hidden=false))]
+    fn render_pdf<'py>(
+        &mut self,
+        py: Python<'py>,
+        include_hidden: bool,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let renderer = self.renderer.get_or_insert_with(Default::default);
+        renderer.options_mut().include_hidden = include_hidden;
+        let inner = &self.inner;
+        let bytes = py.detach(|| renderer.pdf(inner)).py()?;
+        Ok(PyBytes::new(py, &bytes))
+    }
+
+    fn render_png<'py>(
+        &mut self,
+        py: Python<'py>,
+        slide: u32,
+        scale: f64,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let renderer = self.renderer.get_or_insert_with(Default::default);
+        let inner = &self.inner;
+        let bytes = py
+            .detach(|| renderer.png(inner, SlideId(slide), scale))
+            .py()?;
         Ok(PyBytes::new(py, &bytes))
     }
 

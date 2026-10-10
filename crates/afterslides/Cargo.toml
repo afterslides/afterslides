@@ -18,5 +18,19 @@ rust_xlsxwriter.workspace = true
 thiserror.workspace = true
 zip.workspace = true
 
+krilla = { workspace = true, optional = true }
+parley = { workspace = true, optional = true }
+fontique = { workspace = true, optional = true }
+tiny-skia = { workspace = true, optional = true }
+skrifa = { workspace = true, optional = true }
+kurbo = { workspace = true, optional = true }
+zune-jpeg = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
+
+[features]
+default = []
+# Render slides to PDF and PNG. Needs Rust 1.92 (krilla).
+render = ["dep:krilla", "dep:parley", "dep:fontique", "dep:tiny-skia", "dep:skrifa", "dep:kurbo", "dep:zune-jpeg", "dep:flate2"]
+
 [lints]
 workspace = true

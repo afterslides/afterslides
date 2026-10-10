@@ -6,6 +6,8 @@ mod notes;
 mod opc;
 pub mod picture;
 pub mod presentation;
+#[cfg(feature = "render")]
+pub mod render;
 pub mod shape;
 mod slide;
 pub mod table;

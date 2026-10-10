@@ -120,6 +120,18 @@ class Presentation:
     def to_bytes(self) -> bytes:
         return bytes(self._native.to_bytes())
 
+    def render_pdf(self, target: Target | None = None, *, include_hidden: bool = False) -> bytes:
+        """Renders the slides to PDF (prototype: charts, SmartArt and effects
+        are not drawn yet). Returns the PDF and, if given, also writes it to
+        a path or stream."""
+        data = bytes(self._native.render_pdf(include_hidden))
+        if isinstance(target, (str, os.PathLike)):
+            with open(target, "wb") as f:
+                f.write(data)
+        elif target is not None:
+            target.write(data)
+        return data
+
     @property
     def slides(self) -> Slides:
         return Slides(self)
@@ -334,6 +346,11 @@ class Slide:
 
     def move_to(self, position: int) -> None:
         self._n.move_slide(self.id, position)
+
+    def render_png(self, scale: float = 2.0) -> bytes:
+        """Renders the slide to a PNG image; ``scale`` is pixels per point
+        (1.0 = 72 dpi). Prototype, see :meth:`Presentation.render_pdf`."""
+        return bytes(self._n.render_png(self.id, scale))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Slide) and other._prs is self._prs and other.id == self.id

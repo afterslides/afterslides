@@ -18,6 +18,15 @@ rust_xlsxwriter = { version = "0.99", default-features = false }
 thiserror = "2"
 zip = { version = "8.6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 pyo3 = { version = "0.29", features = ["abi3-py39"] }
+# Rendering (optional `render` feature of the core crate)
+krilla = { version = "0.8", default-features = false, features = ["raster-images"] }
+parley = "0.12"
+fontique = "0.12"
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "png-format"] }
+skrifa = "0.48"
+kurbo = "0.13"
+zune-jpeg = "0.5"
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
